@@ -42,6 +42,10 @@ export interface ApplicationConfiguration {
     rateLimitSecret: string;
     cronSecret: string;
   };
+
+  rateLimit: {
+    apiSecret: string;
+  };
 }
 
 export default function configuration(): ApplicationConfiguration {
@@ -104,6 +108,10 @@ export default function configuration(): ApplicationConfiguration {
     registration: {
       rateLimitSecret: process.env.REGISTRATION_RATE_LIMIT_SECRET ?? '',
       cronSecret: process.env.CRON_SECRET ?? '',
+    },
+
+    rateLimit: {
+      apiSecret: process.env.API_RATE_LIMIT_SECRET ?? '',
     },
   };
 }

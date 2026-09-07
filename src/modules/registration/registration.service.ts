@@ -20,6 +20,7 @@ import { runSerializableTransaction } from '../../shared/database/serializable-t
 import { APP_ERROR_CODE } from '../../shared/errors/app-error-code.constant.js';
 import { AppException } from '../../shared/errors/app.exception.js';
 import { MailService } from '../../shared/mail/mail.service.js';
+import { ApiRateLimitService } from '../../shared/rate-limit/rate-limit.service.js';
 import {
   createPaginationMeta,
   normalizePagination,
@@ -56,6 +57,7 @@ export class RegistrationService {
     private readonly mailService: MailService,
     private readonly provisioner: AccountProvisioningService,
     private readonly authService: OperixAuthService,
+    private readonly apiRateLimitService: ApiRateLimitService,
   ) {}
 
   async createPublicRequest(
@@ -521,7 +523,13 @@ export class RegistrationService {
       await this.prisma.registrationThrottleBucket.deleteMany({
         where: { expiresAt: { lt: throttleCutoff } },
       });
-    return { purgedRegistrations, purgedThrottleBuckets: deletedBuckets.count };
+    const purgedApiRateLimitBuckets =
+      await this.apiRateLimitService.cleanupExpired();
+    return {
+      purgedRegistrations,
+      purgedThrottleBuckets: deletedBuckets.count,
+      purgedApiRateLimitBuckets,
+    };
   }
 
   isValidCronAuthorization(authorization: string | undefined): boolean {

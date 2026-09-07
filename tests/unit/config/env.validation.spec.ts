@@ -12,6 +12,7 @@ const validEnvironment = {
   REGISTRATION_RATE_LIMIT_SECRET:
     'registration-rate-limit-secret-at-least-32-characters',
   CRON_SECRET: 'cron-secret-at-least-32-characters-long',
+  API_RATE_LIMIT_SECRET: 'api-rate-limit-secret-at-least-32-characters',
   OPERIX_BUSINESS_TIMEZONE: 'Asia/Dhaka',
   SMTP_ENABLED: 'false',
 };
@@ -156,5 +157,17 @@ describe('validateEnvironment', () => {
     expect(() =>
       validateEnvironment({ ...validEnvironment, THROTTLE_LIMIT: 'nope' }),
     ).toThrow('THROTTLE_LIMIT must be a positive integer');
+  });
+
+  it('requires a separate API rate limit secret with sufficient entropy', () => {
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, API_RATE_LIMIT_SECRET: '' }),
+    ).toThrow('API_RATE_LIMIT_SECRET is required');
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        API_RATE_LIMIT_SECRET: 'short',
+      }),
+    ).toThrow('API_RATE_LIMIT_SECRET must be at least 32 characters long');
   });
 });

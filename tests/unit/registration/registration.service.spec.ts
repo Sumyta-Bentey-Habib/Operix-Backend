@@ -50,6 +50,7 @@ function createService(input?: { count?: number; existingUser?: boolean }) {
     {} as never,
     {} as never,
     {} as never,
+    { cleanupExpired: jestApi.fn().mockResolvedValue(0) } as never,
   );
   return { service, prisma };
 }
@@ -115,6 +116,43 @@ describe('RegistrationService public boundary', () => {
     const result = await service.get(publicId);
     expect(result.id).toBe(publicId);
     expect(JSON.stringify(result)).not.toContain('private-request-id');
+  });
+});
+
+describe('RegistrationService cleanup integration', () => {
+  it('adds bounded generic rate-limit cleanup counts without changing registration cleanup', async () => {
+    const prisma = {
+      registrationRequest: {
+        findMany: jestApi.fn().mockResolvedValue([]),
+      },
+      registrationThrottleBucket: {
+        deleteMany: jestApi.fn().mockResolvedValue({ count: 4 }),
+      },
+    };
+    const apiRateLimitService = {
+      cleanupExpired: jestApi.fn().mockResolvedValue(17),
+    };
+    const service = new RegistrationService(
+      prisma as never,
+      new ConfigService({
+        registration: {
+          rateLimitSecret:
+            'registration-rate-limit-secret-at-least-32-characters',
+          cronSecret: 'cron-secret-at-least-32-characters-long',
+        },
+      }) as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      apiRateLimitService as never,
+    );
+
+    await expect(service.cleanup()).resolves.toEqual({
+      purgedRegistrations: 0,
+      purgedThrottleBuckets: 4,
+      purgedApiRateLimitBuckets: 17,
+    });
+    expect(apiRateLimitService.cleanupExpired).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -213,6 +251,7 @@ describe('RegistrationService approve workflow', () => {
       mailService as unknown as MailService,
       provisioner as unknown as AccountProvisioningService,
       authService as unknown as OperixAuthService,
+      { cleanupExpired: jestApi.fn().mockResolvedValue(0) } as never,
     );
 
     const result = await service.approve(superAdminViewer, requestId, {
@@ -320,6 +359,7 @@ describe('RegistrationService approve workflow', () => {
       {} as never,
       provisioner as unknown as AccountProvisioningService,
       authService as unknown as OperixAuthService,
+      { cleanupExpired: jestApi.fn().mockResolvedValue(0) } as never,
     );
 
     await expect(

@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "Operix Registration API",
+    "name": "Operix Backend API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -11,6 +11,10 @@
     {
       "key": "registrationRequestId",
       "value": "00000000-0000-4000-8000-000000000000"
+    },
+    {
+      "key": "todoId",
+      "value": "7f90b419-ce32-43db-a7d8-7ebc9ca09dc3"
     }
   ],
   "item": [
@@ -60,7 +64,10 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Private review reason\"\n}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Private review reason\"\n}"
+            },
             "url": "{{baseUrl}}/registration-requests/{{registrationRequestId}}/reject"
           }
         },
@@ -74,13 +81,93 @@
       ]
     },
     {
+      "name": "Todos",
+      "item": [
+        {
+          "name": "Create Todo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Review audit checklist\",\n  \"description\": \"Prepare compliance notes\",\n  \"priority\": \"HIGH\",\n  \"category\": \"COMPLIANCE\",\n  \"dueDate\": \"2026-09-10\",\n  \"tags\": [\"audit\", \"q3\"]\n}"
+            },
+            "url": "{{baseUrl}}/todos"
+          }
+        },
+        {
+          "name": "List Todos",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/todos?page=1&limit=20&status=ACTIVE&sort=DUE_ON_ASC"
+          }
+        },
+        {
+          "name": "Todo Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/todos/summary"
+          }
+        },
+        {
+          "name": "Get Todo",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/todos/{{todoId}}"
+          }
+        },
+        {
+          "name": "Update Todo",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": null,\n  \"tags\": [\"audit\", \"ready\"]\n}"
+            },
+            "url": "{{baseUrl}}/todos/{{todoId}}"
+          }
+        },
+        {
+          "name": "Complete Todo",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/todos/{{todoId}}/complete"
+          }
+        },
+        {
+          "name": "Reopen Todo",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/todos/{{todoId}}/reopen"
+          }
+        },
+        {
+          "name": "Clear Completed Todos",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/todos/completed"
+          }
+        },
+        {
+          "name": "Delete Todo",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/todos/{{todoId}}"
+          }
+        }
+      ]
+    },
+    {
       "name": "Internal Cron",
       "item": [
         {
           "name": "Registration Cleanup",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{cronSecret}}" }],
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{cronSecret}}" }
+            ],
             "url": "{{baseUrl}}/internal/cron/registration-cleanup"
           }
         }

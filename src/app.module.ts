@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { fileURLToPath } from 'node:url';
 import configuration from './config/configuration.js';
 import { validateEnvironment } from './config/env.validation.js';
@@ -21,7 +21,9 @@ import { RegistrationModule } from './modules/registration/registration.module.j
 import { SubmissionModule } from './modules/submission/submission.module.js';
 import { TaskModule } from './modules/task/task.module.js';
 import { TeamModule } from './modules/team/team.module.js';
+import { TodoModule } from './modules/todo/todo.module.js';
 import { UserManagementModule } from './modules/user-management/user-management.module.js';
+import { OperixThrottlerGuard } from './shared/rate-limit/operix-throttler.guard.js';
 
 const ENV_FILE_PATHS = [
   '.env',
@@ -50,6 +52,7 @@ const ENV_FILE_PATHS = [
     PrismaModule,
     OperixAuthModule,
     TeamModule,
+    TodoModule,
     UserManagementModule,
     TaskModule,
     SubmissionModule,
@@ -68,7 +71,7 @@ const ENV_FILE_PATHS = [
   providers: [
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: OperixThrottlerGuard,
     },
   ],
 })

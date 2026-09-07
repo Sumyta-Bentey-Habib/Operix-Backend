@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { GlobalExceptionFilter } from '../../../src/shared/filters/global-exception.filter';
+import { AppException } from '../../../src/shared/errors/app.exception';
 
 const jestApi = import.meta.jest;
 
@@ -12,14 +13,16 @@ interface ResponseHarness {
   response: Response;
   status: jest.Mock;
   json: jest.Mock;
+  setHeader: jest.Mock;
 }
 
 function createResponseHarness(): ResponseHarness {
   const json = jestApi.fn();
   const status = jestApi.fn().mockReturnValue({ json });
-  const response = { status } as unknown as Response;
+  const setHeader = jestApi.fn();
+  const response = { status, setHeader } as unknown as Response;
 
-  return { response, status, json };
+  return { response, status, json, setHeader };
 }
 
 function createHost(response: Response): ArgumentsHost {
@@ -67,5 +70,44 @@ describe('GlobalExceptionFilter', () => {
       code: 'INTERNAL_SERVER_ERROR',
       details: null,
     });
+  });
+
+  it('adds a normalized Retry-After header for rate limit responses', () => {
+    const { response, status, json, setHeader } = createResponseHarness();
+
+    filter.catch(
+      new AppException(
+        HttpStatus.TOO_MANY_REQUESTS,
+        'RATE_LIMITED',
+        'Too many requests.',
+        { retryAfter: 41.2 },
+      ),
+      createHost(response),
+    );
+
+    expect(setHeader).toHaveBeenCalledWith('Retry-After', '42');
+    expect(status).toHaveBeenCalledWith(HttpStatus.TOO_MANY_REQUESTS);
+    expect(json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Too many requests.',
+      code: 'RATE_LIMITED',
+      details: { retryAfter: 41.2 },
+    });
+  });
+
+  it('does not write unsafe Retry-After values', () => {
+    const { response, setHeader } = createResponseHarness();
+
+    filter.catch(
+      new AppException(
+        HttpStatus.TOO_MANY_REQUESTS,
+        'RATE_LIMITED',
+        'Too many requests.',
+        { retryAfter: Number.NaN },
+      ),
+      createHost(response),
+    );
+
+    expect(setHeader).not.toHaveBeenCalled();
   });
 });

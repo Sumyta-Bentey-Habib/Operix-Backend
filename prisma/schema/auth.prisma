@@ -46,6 +46,7 @@ model User {
 
   registrationRequest RegistrationRequest? @relation("ApprovedRegistrationUser", fields: [registrationRequestId], references: [id], onDelete: SetNull)
   reviewedRegistrationRequests RegistrationRequest[] @relation("RegistrationReviewer")
+  todos TodoItem[]
 
   @@map("user")
 }

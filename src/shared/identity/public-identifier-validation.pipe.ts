@@ -23,6 +23,7 @@ const PUBLIC_IDENTIFIER_FIELDS = new Set([
   'responsibleUserId',
   'recurrenceId',
   'ownerId',
+  'todoId',
 ]);
 
 @Injectable()

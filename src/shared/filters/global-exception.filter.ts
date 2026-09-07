@@ -14,7 +14,7 @@ const statusCodes: Record<number, string> = {
   [HttpStatus.FORBIDDEN]: 'FORBIDDEN',
   [HttpStatus.NOT_FOUND]: 'RESOURCE_NOT_FOUND',
   [HttpStatus.CONFLICT]: 'CONFLICT',
-  [HttpStatus.TOO_MANY_REQUESTS]: 'TOO_MANY_REQUESTS',
+  [HttpStatus.TOO_MANY_REQUESTS]: 'RATE_LIMITED',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -63,6 +63,15 @@ function readCode(response: unknown, status: number): string {
   }
 
   return statusCodes[status] ?? 'HTTP_ERROR';
+}
+
+function readRetryAfter(response: unknown): number | null {
+  if (!isRecord(response) || !isRecord(response.details)) return null;
+  const value = response.details.retryAfter;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return Math.max(1, Math.ceil(value));
 }
 
 function isMulterError(
@@ -115,6 +124,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         code: readCode(exceptionResponse, status),
         details: readDetails(exceptionResponse),
       };
+      if (status === 429) {
+        const retryAfter = readRetryAfter(exceptionResponse);
+        if (retryAfter !== null) {
+          response.setHeader('Retry-After', String(retryAfter));
+        }
+      }
       response.status(status).json(body);
       return;
     }

@@ -36,6 +36,21 @@ enum TaskPriority {
   URGENT
 }
 
+enum TodoCategory {
+  OPERATIONS
+  SECURITY
+  FINANCE
+  TEAM
+  COMPLIANCE
+  GENERAL
+}
+
+enum ApiRateLimitScope {
+  TODO_CREATE
+  TODO_DELETE
+  TODO_CLEAR_COMPLETED
+}
+
 enum TaskCompletionMode {
   REVIEW_REQUIRED
   DIRECT

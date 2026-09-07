@@ -2604,3 +2604,11 @@ Approved business identifiers—including employee ID, task reference code, SKU,
 Operix accepts privacy safe public access requests containing applicant name and email. An applicant remains separate from the authenticated User model until a Super Admin assigns the `ADMIN` or `MEMBER` role and approves the request. Approved accounts start inactive and become active only after the applicant configures a password through Better Auth's native reset flow.
 
 Registration requests support `PENDING`, operational `APPROVING`, `APPROVED`, and `REJECTED` states. Public signup remains disabled. Receipt, setup, and generic rejection email delivery is best effort. Registration review data is retained for 90 days after rejection or completed setup, while approved setup pending requests are retained.
+
+# Persistent Personal Todos
+
+Operix provides a private PostgreSQL-backed checklist for active `SUPER_ADMIN` and `ADMIN` users. Each Todo belongs to exactly one User and is never shared. Members cannot access this feature. Todo data remains separate from organizational Tasks and creates no Activity, Notification, email, recurrence, or audit records.
+
+Todo deadlines are calendar dates in the configured Operix business timezone. Completion and reopening are idempotent, completed items remain editable, and overdue state is derived only for active items whose due date is before the current business date. Client-facing Todo identity is an immutable public UUID; private owner and database identities never leave the backend.
+
+Selected Todo mutations use a PostgreSQL fixed-window rate limit keyed by an HMAC of the authenticated internal User identity. The existing global Nest throttler remains the local burst guard, while authorization, owner scoping, idempotency, and database constraints remain the correctness controls.
