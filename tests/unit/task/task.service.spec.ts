@@ -67,14 +67,27 @@ function createTask(
     ...baseTask(),
     ...overrides,
   };
+  Object.defineProperty(task.team, 'publicId', {
+    value: task.team.id,
+    enumerable: false,
+  });
   Object.defineProperties(task, {
     publicId: { value: task.id, enumerable: false },
-    team: { value: { publicId: task.teamId }, enumerable: false },
     category: {
       value: task.categoryId ? { publicId: task.categoryId } : null,
       enumerable: false,
     },
-    createdBy: { value: { publicId: task.createdById }, enumerable: false },
+    createdBy: {
+      value: {
+        publicId: task.owner.id,
+        name: task.owner.name,
+        role: task.owner.role,
+        employeeId: task.owner.employeeId,
+        designation: task.owner.designation,
+      },
+      enumerable: false,
+    },
+    assignments: { value: [], enumerable: false },
   });
   return task;
 }
@@ -92,9 +105,22 @@ function baseTask(): SafeTaskResponse {
     startedAt: null,
     completedAt: null,
     cancelledAt: null,
-    teamId: 'team-a',
+    team: { id: 'team-a', name: 'Team A' },
     categoryId: null,
-    createdById: 'admin-a',
+    owner: {
+      id: 'admin-a',
+      name: 'Admin A',
+      role: UserRole.ADMIN,
+      employeeId: null,
+      designation: null,
+    },
+    responsible: null,
+    scheduledStartAt: null,
+    completionMode: 'REVIEW_REQUIRED' as const,
+    completionNote: null,
+    occurrenceKey: null,
+    recurrence: null,
+    reminder: null,
     createdAt: fixedDate,
     updatedAt: fixedDate,
     isOverdue: false,
@@ -132,7 +158,7 @@ describe('task scope policy', () => {
     expect(buildTaskScopeWhere(createViewer(UserRole.MEMBER))).toEqual({
       assignments: {
         some: {
-          memberId: 'member-a',
+          responsibleUserId: 'member-a',
           unassignedAt: null,
         },
       },
@@ -169,14 +195,14 @@ describe('ListTaskQueryDto', () => {
       status: TaskStatus.COMPLETED,
       priority: TaskPriority.URGENT,
       teamId: 'team-a',
-      assignedMemberId: 'member-a',
+      responsibleUserId: 'member-a',
       sort: TaskSort.DUE_AT_ASC,
     });
     const invalid = plainToInstance(ListTaskQueryDto, {
       status: 'DONE',
       priority: 'VERY_HIGH',
       teamId: '',
-      assignedMemberId: '',
+      responsibleUserId: '',
       sort: 'DUE_SOON',
     });
 
@@ -186,11 +212,11 @@ describe('ListTaskQueryDto', () => {
 });
 
 describe('TaskService', () => {
-  it('rejects Super Admin task creation for V1', async () => {
+  it('rejects Member task creation', async () => {
     const service = createTaskService({} as PrismaService);
 
     try {
-      await service.createTask(createViewer(UserRole.SUPER_ADMIN), {
+      await service.createTask(createViewer(UserRole.MEMBER), {
         title: 'Task',
         teamId: 'team-a',
       });
@@ -262,7 +288,7 @@ describe('TaskService', () => {
     });
   });
 
-  it('returns privacy safe TASK_NOT_FOUND outside Admin scope', async () => {
+  it('returns TASK_NOT_FOUND when a globally visible task does not exist', async () => {
     const prisma = {
       task: {
         findFirst: jestApi.fn().mockResolvedValue(null),
@@ -297,7 +323,7 @@ describe('TaskService', () => {
     await expect(
       service.listTasks(createViewer(UserRole.ADMIN), {
         status: TaskStatus.IN_PROGRESS,
-        assignedMemberId: 'member-a',
+        responsibleUserId: 'member-a',
         overdue: true,
         page: 1,
         limit: 20,
@@ -354,7 +380,7 @@ describe('TaskService', () => {
     });
   });
 
-  it('returns paginated status history after scoped task lookup', async () => {
+  it('returns globally visible paginated status history', async () => {
     const history = {
       fromStatus: TaskStatus.SUBMITTED,
       toStatus: TaskStatus.UNDER_REVIEW,
@@ -402,13 +428,6 @@ describe('TaskService', () => {
     expect(prisma.task.findFirst).toHaveBeenCalledWith({
       where: {
         publicId: 'task-a',
-        AND: [
-          {
-            teamId: {
-              in: ['team-a'],
-            },
-          },
-        ],
       },
       select: {
         id: true,
@@ -432,7 +451,7 @@ describe('TaskService', () => {
     });
   });
 
-  it('returns task not found for out-of-scope history', async () => {
+  it('returns task not found when globally visible history does not exist', async () => {
     const prisma = {
       task: {
         findFirst: jestApi.fn().mockResolvedValue(null),
@@ -451,11 +470,18 @@ describe('TaskService', () => {
     }
   });
 
-  it('rejects assignment when the Member is not eligible for the Task Team', async () => {
+  it('rejects assignment when the responsible user is not eligible', async () => {
     const tx = {
       task: {
         findFirst: jestApi.fn().mockResolvedValue({
           id: 'task-a',
+          publicId: 'task-a',
+          referenceCode: 'TASK-20260820-ABC123',
+          title: 'Prepare batch report',
+          priority: TaskPriority.MEDIUM,
+          dueAt: null,
+          createdById: 'admin-a',
+          completionMode: 'REVIEW_REQUIRED',
           status: TaskStatus.PENDING,
           teamId: 'team-a',
         }),
@@ -477,13 +503,13 @@ describe('TaskService', () => {
 
     try {
       await service.assignTask(createViewer(UserRole.ADMIN), 'task-a', {
-        memberId: 'member-a',
+        responsibleUserId: 'member-a',
       });
       throw new Error('Expected assignment to fail.');
     } catch (error) {
       expectAppException(error, {
         status: HttpStatus.CONFLICT,
-        code: TASK_ERROR_CODE.MEMBER_NOT_ELIGIBLE_FOR_TASK,
+        code: TASK_ERROR_CODE.RESPONSIBLE_USER_NOT_ELIGIBLE,
       });
     }
   });
@@ -497,6 +523,13 @@ describe('TaskService', () => {
       task: {
         findFirst: jestApi.fn().mockResolvedValue({
           id: 'task-a',
+          publicId: 'task-a',
+          referenceCode: updatedTask.referenceCode,
+          title: updatedTask.title,
+          priority: updatedTask.priority,
+          dueAt: updatedTask.dueAt,
+          createdById: 'admin-a',
+          completionMode: 'REVIEW_REQUIRED',
           status: TaskStatus.PENDING,
           teamId: 'team-a',
         }),
@@ -536,7 +569,7 @@ describe('TaskService', () => {
 
     await expect(
       service.assignTask(createViewer(UserRole.ADMIN), 'task-a', {
-        memberId: 'member-a',
+        responsibleUserId: 'member-a',
         note: 'Please start today.',
       }),
     ).resolves.toEqual(updatedTask);
@@ -544,7 +577,7 @@ describe('TaskService', () => {
     expect(tx.taskAssignment.create).toHaveBeenCalledWith({
       data: {
         taskId: 'task-a',
-        memberId: 'member-a',
+        responsibleUserId: 'member-a',
         assignedById: 'admin-a',
         note: 'Please start today.',
       },
@@ -570,9 +603,9 @@ describe('TaskService', () => {
       },
     });
     expect(mailService.sendTaskAssignedEmail).toHaveBeenCalledWith({
-      memberId: 'member-a',
-      memberName: 'Member A',
-      memberEmail: 'member@example.com',
+      responsibleUserId: 'member-a',
+      responsibleName: 'Member A',
+      responsibleEmail: 'member@example.com',
       taskId: 'task-a',
       referenceCode: updatedTask.referenceCode,
       title: updatedTask.title,
@@ -602,6 +635,13 @@ describe('TaskService', () => {
       task: {
         findFirst: jestApi.fn().mockResolvedValue({
           id: 'task-a',
+          publicId: 'task-a',
+          referenceCode: updatedTask.referenceCode,
+          title: updatedTask.title,
+          priority: updatedTask.priority,
+          dueAt: updatedTask.dueAt,
+          createdById: 'admin-a',
+          completionMode: 'REVIEW_REQUIRED',
           status: TaskStatus.PENDING,
           teamId: 'team-a',
         }),
@@ -641,7 +681,7 @@ describe('TaskService', () => {
 
     await expect(
       service.assignTask(createViewer(UserRole.ADMIN), 'task-a', {
-        memberId: 'member-a',
+        responsibleUserId: 'member-a',
       }),
     ).resolves.toEqual(updatedTask);
 
@@ -660,6 +700,12 @@ describe('TaskService', () => {
           status: TaskStatus.ASSIGNED,
         }),
         update: jestApi.fn().mockResolvedValue(startedTask),
+      },
+      taskAssignment: {
+        findFirst: jestApi.fn().mockResolvedValue({
+          id: 'assignment-a',
+          responsibleUserId: 'member-a',
+        }),
       },
       taskStatusHistory: {
         create: jestApi.fn().mockResolvedValue({ id: 'history-a' }),
@@ -709,7 +755,7 @@ describe('task query helpers', () => {
       {
         status: TaskStatus.IN_PROGRESS,
         priority: TaskPriority.URGENT,
-        assignedMemberId: undefined,
+        responsibleUserId: undefined,
         overdue: true,
         q: 'batch',
       },
@@ -718,14 +764,6 @@ describe('task query helpers', () => {
 
     expect(where).toEqual({
       AND: [
-        {
-          assignments: {
-            some: {
-              memberId: 'member-a',
-              unassignedAt: null,
-            },
-          },
-        },
         {
           status: TaskStatus.IN_PROGRESS,
         },
@@ -766,33 +804,40 @@ describe('task query helpers', () => {
     });
   });
 
-  it('blocks unauthorized query controls', () => {
-    expect(() =>
+  it('allows global visibility filters for every authenticated role', () => {
+    expect(
       buildTaskListWhere(
         createViewer(UserRole.ADMIN),
-        {
-          teamId: 'team-b',
-        },
+        { teamId: 'team-b' },
         fixedDate,
       ),
-    ).toThrow();
+    ).toEqual({ AND: [{ team: { publicId: 'team-b' } }] });
 
-    expect(() =>
+    expect(
       buildTaskListWhere(
         createViewer(UserRole.MEMBER),
-        {
-          assignedMemberId: 'member-b',
-        },
+        { responsibleUserId: 'member-b' },
         fixedDate,
       ),
-    ).toThrow();
+    ).toEqual({
+      AND: [
+        {
+          assignments: {
+            some: {
+              responsibleUser: { publicId: 'member-b' },
+              unassignedAt: null,
+            },
+          },
+        },
+      ],
+    });
   });
 
-  it('uses current assignment for assignedMemberId and exact overdue false complement', () => {
+  it('uses current responsibility and exact overdue false complement', () => {
     const where = buildTaskListWhere(
       createViewer(UserRole.ADMIN),
       {
-        assignedMemberId: 'member-b',
+        responsibleUserId: 'member-b',
         overdue: false,
       },
       fixedDate,
@@ -801,14 +846,9 @@ describe('task query helpers', () => {
     expect(where).toEqual({
       AND: [
         {
-          teamId: {
-            in: ['team-a'],
-          },
-        },
-        {
           assignments: {
             some: {
-              member: { publicId: 'member-b' },
+              responsibleUser: { publicId: 'member-b' },
               unassignedAt: null,
             },
           },

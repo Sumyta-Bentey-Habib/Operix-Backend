@@ -450,7 +450,7 @@ export class ImportService {
     const assignmentResult = await tx.taskAssignment.createMany({
       data: rowsToCreate.map((row) => ({
         taskId: createdTaskIdsByReference.get(row.referenceCode)!,
-        memberId: row.memberId,
+        responsibleUserId: row.memberId,
         assignedById: row.assignedById,
         assignedAt: row.assignedAt,
         unassignedAt: null,
@@ -925,7 +925,7 @@ const HISTORICAL_TASK_EXISTING_SELECT = {
       unassignedAt: null,
     },
     select: {
-      memberId: true,
+      responsibleUserId: true,
       assignedById: true,
       assignedAt: true,
       unassignedAt: true,

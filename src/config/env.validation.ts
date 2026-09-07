@@ -254,6 +254,15 @@ export function validateEnvironment(
     'THROTTLE_LIMIT',
     100,
   );
+  const businessTimezone = requiredString(
+    environment,
+    'OPERIX_BUSINESS_TIMEZONE',
+  );
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: businessTimezone });
+  } catch {
+    throw new Error('OPERIX_BUSINESS_TIMEZONE must be a valid IANA timezone');
+  }
 
   return {
     ...environment,
@@ -279,6 +288,8 @@ export function validateEnvironment(
     THROTTLE_TTL_MS: throttleTtlMs,
 
     THROTTLE_LIMIT: throttleLimit,
+
+    OPERIX_BUSINESS_TIMEZONE: businessTimezone,
 
     SMTP_ENABLED: smtpEnabled,
 

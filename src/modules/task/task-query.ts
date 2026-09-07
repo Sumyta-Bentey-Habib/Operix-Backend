@@ -1,11 +1,7 @@
-import { HttpStatus } from '@nestjs/common';
 import type { Prisma } from '../../../generated/prisma/client.js';
-import { TaskStatus, UserRole } from '../../../generated/prisma/enums.js';
+import { TaskStatus } from '../../../generated/prisma/enums.js';
 import type { OperixViewer } from '../../shared/auth/viewer.interface.js';
-import { APP_ERROR_CODE } from '../../shared/errors/app-error-code.constant.js';
-import { AppException } from '../../shared/errors/app.exception.js';
 import type { ListTaskQueryDto } from './dto/list-task-query.dto.js';
-import { buildTaskScopeWhere } from './policies/task-scope.policy.js';
 import { TaskSort } from './task.constant.js';
 
 export function buildTaskListWhere(
@@ -13,13 +9,10 @@ export function buildTaskListWhere(
   query: ListTaskQueryDto,
   now: Date,
 ): Prisma.TaskWhereInput {
-  assertAllowedTaskQuery(viewer, query);
+  void viewer;
 
   return {
-    AND: [
-      buildTaskScopeWhere(viewer),
-      ...buildTaskFilterConditions(query, now),
-    ],
+    AND: buildTaskFilterConditions(query, now),
   };
 }
 
@@ -40,19 +33,6 @@ export function getTaskOrderBy(
     case TaskSort.CREATED_AT_DESC:
     default:
       return [{ createdAt: 'desc' }, { id: 'desc' }];
-  }
-}
-
-function assertAllowedTaskQuery(
-  viewer: OperixViewer,
-  query: ListTaskQueryDto,
-): void {
-  if (query.teamId && viewer.role !== UserRole.SUPER_ADMIN) {
-    throw forbidden();
-  }
-
-  if (query.assignedMemberId && viewer.role === UserRole.MEMBER) {
-    throw forbidden();
   }
 }
 
@@ -80,15 +60,27 @@ function buildTaskFilterConditions(
     });
   }
 
-  if (query.assignedMemberId) {
+  if (query.responsibleUserId) {
     conditions.push({
       assignments: {
         some: {
-          member: { publicId: query.assignedMemberId },
+          responsibleUser: { publicId: query.responsibleUserId },
           unassignedAt: null,
         },
       },
     });
+  }
+
+  if (query.ownerId) {
+    conditions.push({ createdBy: { publicId: query.ownerId } });
+  }
+
+  if (query.recurrenceId) {
+    conditions.push({ recurrence: { publicId: query.recurrenceId } });
+  }
+
+  if (query.recurrenceFrequency) {
+    conditions.push({ recurrence: { frequency: query.recurrenceFrequency } });
   }
 
   if (query.overdue === true) {
@@ -148,12 +140,4 @@ function buildTaskFilterConditions(
   }
 
   return conditions;
-}
-
-function forbidden(): AppException {
-  return new AppException(
-    HttpStatus.FORBIDDEN,
-    APP_ERROR_CODE.FORBIDDEN,
-    'You do not have access to this resource.',
-  );
 }

@@ -12,6 +12,7 @@ const validEnvironment = {
   REGISTRATION_RATE_LIMIT_SECRET:
     'registration-rate-limit-secret-at-least-32-characters',
   CRON_SECRET: 'cron-secret-at-least-32-characters-long',
+  OPERIX_BUSINESS_TIMEZONE: 'Asia/Dhaka',
   SMTP_ENABLED: 'false',
 };
 

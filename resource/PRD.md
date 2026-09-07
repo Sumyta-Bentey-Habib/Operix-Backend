@@ -669,7 +669,20 @@ System provides information/recommendations
 Admin makes final assignment decision
 ```
 
-Automatic task assignment is not part of the MVP.
+Blind performance-based automatic assignment is not part of the MVP. Approved recurring series may automatically materialize a Task occurrence for the series' explicitly configured Responsible User.
+
+## 20.1 Task V2 Ownership and Recurrence
+
+```text
+Owner = immutable Task creator
+Responsible User = current executor
+Visibility = global Task metadata/history for active authenticated users
+Completion = REVIEW_REQUIRED or DIRECT
+Recurrence = optional WEEKLY or MONTHLY DIRECT series
+Reminder = one persisted reminder per recurring occurrence
+```
+
+Admin creation remains limited to the Admin's current Team; Super Admin may create for any Team. Responsibility may cross Teams. Global Task visibility does not grant mutation, artifact, submission, review, Dashboard, report, Activity, or Inventory access. Recurrence uses stable business-local anchors and creates independent historical Task occurrences. Overdue remains derived and never becomes a persisted Task status.
 
 ---
 

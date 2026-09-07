@@ -130,7 +130,7 @@ export interface HistoricalTaskExisting {
   completedAt: Date | null;
   cancelledAt: Date | null;
   assignments: {
-    memberId: string;
+    responsibleUserId: string;
     assignedById: string;
     assignedAt: Date;
     unassignedAt: Date | null;
@@ -541,7 +541,7 @@ async function resolveHistoricalReferences(
             unassignedAt: null,
           },
           select: {
-            memberId: true,
+            responsibleUserId: true,
             assignedById: true,
             assignedAt: true,
             unassignedAt: true,
@@ -748,7 +748,7 @@ export function historicalTaskMatches(
     existing.teamId === candidate.teamId &&
     existing.createdById === candidate.createdById &&
     currentAssignment !== null &&
-    currentAssignment.memberId === candidate.memberId &&
+    currentAssignment.responsibleUserId === candidate.memberId &&
     currentAssignment.assignedById === candidate.assignedById &&
     sameTime(currentAssignment.assignedAt, candidate.assignedAt) &&
     currentAssignment.unassignedAt === null &&

@@ -31,7 +31,7 @@ export class ExportTaskQueryDto extends ExportFormatQueryDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
-  assignedMemberId?: string;
+  responsibleUserId?: string;
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => {

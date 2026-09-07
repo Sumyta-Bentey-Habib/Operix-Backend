@@ -23,9 +23,11 @@ model User {
   teamMembership    TeamMember? @relation("MemberTeam")
 
   createdTasks       Task[]              @relation("TaskCreator")
-  memberAssignments  TaskAssignment[]    @relation("MemberAssignments")
+  responsibleAssignments TaskAssignment[] @relation("ResponsibleAssignments")
   assignmentsCreated TaskAssignment[]    @relation("AssignmentsCreated")
   taskStatusChanges  TaskStatusHistory[] @relation("TaskStatusChanges")
+  taskRecurrencesCreated TaskRecurrence[] @relation("TaskRecurrenceCreator")
+  taskRecurrencesResponsible TaskRecurrence[] @relation("TaskRecurrenceResponsible")
   uploadedFiles      FileAsset[]         @relation("UploadedFiles")
   taskSubmissions    TaskSubmission[]    @relation("TaskSubmissions")
   taskReviews        TaskReview[]        @relation("TaskReviews")

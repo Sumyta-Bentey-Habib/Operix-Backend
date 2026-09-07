@@ -7,6 +7,7 @@ export interface ApplicationConfiguration {
     swaggerEnabled: boolean;
     throttleTtlMs: number;
     throttleLimit: number;
+    businessTimezone: string;
   };
 
   database: {
@@ -65,6 +66,7 @@ export default function configuration(): ApplicationConfiguration {
       throttleTtlMs: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
 
       throttleLimit: Number(process.env.THROTTLE_LIMIT ?? 100),
+      businessTimezone: process.env.OPERIX_BUSINESS_TIMEZONE ?? '',
     },
 
     database: {

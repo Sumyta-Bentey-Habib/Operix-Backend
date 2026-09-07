@@ -147,7 +147,7 @@ describe('SubmissionService', () => {
           publicId: 'task-a',
           assignments: {
             some: {
-              memberId: 'member-a',
+              responsibleUserId: 'member-a',
               unassignedAt: null,
             },
           },

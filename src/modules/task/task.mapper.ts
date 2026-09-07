@@ -35,9 +35,38 @@ export function mapTaskResponse(
     startedAt: task.startedAt,
     completedAt: task.completedAt,
     cancelledAt: task.cancelledAt,
-    teamId: task.team.publicId,
+    scheduledStartAt: task.scheduledStartAt,
+    completionMode: task.completionMode,
+    completionNote: task.completionNote,
+    occurrenceKey: task.occurrenceKey,
+    team: { id: task.team.publicId, name: task.team.name },
     categoryId: task.category?.publicId ?? null,
-    createdById: task.createdBy.publicId,
+    owner: {
+      id: task.createdBy.publicId,
+      name: task.createdBy.name,
+      role: task.createdBy.role,
+      employeeId: task.createdBy.employeeId,
+      designation: task.createdBy.designation,
+    },
+    responsible: task.assignments[0]
+      ? {
+          id: task.assignments[0].responsibleUser.publicId,
+          name: task.assignments[0].responsibleUser.name,
+          role: task.assignments[0].responsibleUser.role,
+          employeeId: task.assignments[0].responsibleUser.employeeId,
+          designation: task.assignments[0].responsibleUser.designation,
+        }
+      : null,
+    recurrence: task.recurrence
+      ? {
+          id: task.recurrence.publicId,
+          frequency: task.recurrence.frequency,
+          nextOccurrenceAt: task.recurrence.nextOccurrenceAt,
+          reminderLeadMinutes: task.recurrence.reminderLeadMinutes,
+          isActive: task.recurrence.isActive,
+        }
+      : null,
+    reminder: task.reminder,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
     isOverdue: isTaskOverdue(task, now),

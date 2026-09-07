@@ -108,7 +108,7 @@ describe('PerformanceService', () => {
       taskAssignment: {
         findMany: jestApi.fn().mockResolvedValue([
           {
-            memberId: 'member-a',
+            responsibleUserId: 'member-a',
             task: task(),
           },
         ]),
@@ -179,7 +179,7 @@ describe('PerformanceService', () => {
     expect(prisma.taskAssignment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          memberId: {
+          responsibleUserId: {
             in: ['member-a'],
           },
           unassignedAt: null,

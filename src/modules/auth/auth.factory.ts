@@ -88,14 +88,14 @@ export function createOperixAuth(
       enabled: true,
       disableSignUp: true,
       resetPasswordTokenExpiresIn: PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
-      sendResetPassword: async ({ user, url }) => {
-        const lifecycle = prisma.user?.findUnique
-          ? await prisma.user.findUnique({
-              where: { id: user.id },
-              select: { passwordSetupRequired: true },
-            })
-          : null;
-        try {
+      sendResetPassword: ({ user, url }) => {
+        void (async () => {
+          const lifecycle = prisma.user?.findUnique
+            ? await prisma.user.findUnique({
+                where: { id: user.id },
+                select: { passwordSetupRequired: true },
+              })
+            : null;
           if (lifecycle?.passwordSetupRequired) {
             await mailService.sendAccountSetupEmail({
               userId: user.id,
@@ -103,17 +103,18 @@ export function createOperixAuth(
               email: user.email,
               setupUrl: url,
             });
-          } else {
-            await mailService.sendPasswordResetEmail({
-              userId: user.id,
-              recipientName: user.name,
-              email: user.email,
-              resetUrl: url,
-            });
+            return;
           }
-        } catch (error: unknown) {
+          await mailService.sendPasswordResetEmail({
+            userId: user.id,
+            recipientName: user.name,
+            email: user.email,
+            resetUrl: url,
+          });
+        })().catch((error: unknown) => {
           mailService.logPasswordResetDeliveryFailure(user.id, error);
-        }
+        });
+        return Promise.resolve();
       },
       onPasswordReset: async ({ user }) => {
         try {

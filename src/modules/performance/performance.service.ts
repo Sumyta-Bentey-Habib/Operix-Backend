@@ -303,13 +303,13 @@ export class PerformanceService {
     */
     const assignments = await this.prisma.taskAssignment.findMany({
       where: {
-        memberId: {
+        responsibleUserId: {
           in: memberIds,
         },
         unassignedAt: null,
       },
       select: {
-        memberId: true,
+        responsibleUserId: true,
         task: {
           select: performanceTaskSelect,
         },
@@ -318,9 +318,9 @@ export class PerformanceService {
     const tasksByMemberId = new Map<string, PerformanceTaskMetricSource[]>();
 
     for (const assignment of assignments) {
-      const existing = tasksByMemberId.get(assignment.memberId) ?? [];
+      const existing = tasksByMemberId.get(assignment.responsibleUserId) ?? [];
       existing.push(assignment.task);
-      tasksByMemberId.set(assignment.memberId, existing);
+      tasksByMemberId.set(assignment.responsibleUserId, existing);
     }
 
     return tasksByMemberId;
