@@ -192,7 +192,7 @@ export class ActivityService {
         where: {
           assignments: {
             some: {
-              memberId: viewer.userId,
+              responsibleUserId: viewer.userId,
               unassignedAt: null,
             },
           },

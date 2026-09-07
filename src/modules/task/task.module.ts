@@ -6,12 +6,26 @@ import { OperixAuthModule } from '../auth/auth.module.js';
 import { TaskAttachmentController } from './task-attachment.controller.js';
 import { TaskAttachmentService } from './task-attachment.service.js';
 import { TaskController } from './task.controller.js';
+import { TaskAutomationController } from './task-automation.controller.js';
+import { TaskAutomationService } from './task-automation.service.js';
+import { TaskRecurrenceController } from './task-recurrence.controller.js';
+import { TaskRecurrenceService } from './task-recurrence.service.js';
 import { TaskService } from './task.service.js';
 
 @Module({
   imports: [PrismaModule, OperixAuthModule, MailModule, FileStorageModule],
-  controllers: [TaskController, TaskAttachmentController],
-  providers: [TaskService, TaskAttachmentService],
+  controllers: [
+    TaskController,
+    TaskAttachmentController,
+    TaskRecurrenceController,
+    TaskAutomationController,
+  ],
+  providers: [
+    TaskService,
+    TaskAttachmentService,
+    TaskRecurrenceService,
+    TaskAutomationService,
+  ],
   exports: [TaskService],
 })
 export class TaskModule {}

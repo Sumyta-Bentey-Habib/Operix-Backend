@@ -625,13 +625,13 @@ export class DashboardService {
     const memberIds = members.map((member) => member.id);
     const assignments = await this.prisma.taskAssignment.findMany({
       where: {
-        memberId: {
+        responsibleUserId: {
           in: memberIds,
         },
         unassignedAt: null,
       },
       select: {
-        memberId: true,
+        responsibleUserId: true,
         task: {
           select: performanceTaskSelect,
         },
@@ -640,9 +640,9 @@ export class DashboardService {
     const tasksByMemberId = new Map<string, DashboardTaskMetricSource[]>();
 
     for (const assignment of assignments) {
-      const existing = tasksByMemberId.get(assignment.memberId) ?? [];
+      const existing = tasksByMemberId.get(assignment.responsibleUserId) ?? [];
       existing.push(assignment.task);
-      tasksByMemberId.set(assignment.memberId, existing);
+      tasksByMemberId.set(assignment.responsibleUserId, existing);
     }
 
     return members.map((member) => {
@@ -717,7 +717,7 @@ export class DashboardService {
     return {
       assignments: {
         some: {
-          memberId,
+          responsibleUserId: memberId,
           unassignedAt: null,
         },
       },

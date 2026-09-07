@@ -1,9 +1,22 @@
 import type { Task } from '../../../generated/prisma/client.js';
+import type {
+  TaskCompletionMode,
+  TaskRecurrenceFrequency,
+  TaskReminderStatus,
+  UserRole,
+} from '../../../generated/prisma/enums.js';
 import type { PaginationMeta } from '../../shared/pagination/pagination.interface.js';
+
+interface SafeTaskUserResponse {
+  id: string;
+  name: string;
+  role: UserRole;
+  employeeId: string | null;
+  designation: string | null;
+}
 
 export type SafeTaskResponse = Pick<
   Task,
-  | 'id'
   | 'referenceCode'
   | 'title'
   | 'description'
@@ -14,12 +27,30 @@ export type SafeTaskResponse = Pick<
   | 'startedAt'
   | 'completedAt'
   | 'cancelledAt'
-  | 'teamId'
-  | 'categoryId'
-  | 'createdById'
   | 'createdAt'
   | 'updatedAt'
 > & {
+  id: string;
+  owner: SafeTaskUserResponse;
+  responsible: SafeTaskUserResponse | null;
+  team: { id: string; name: string };
+  categoryId: string | null;
+  scheduledStartAt: Date | null;
+  completionMode: TaskCompletionMode;
+  completionNote: string | null;
+  occurrenceKey: string | null;
+  recurrence: {
+    id: string;
+    frequency: TaskRecurrenceFrequency;
+    nextOccurrenceAt: Date;
+    reminderLeadMinutes: number;
+    isActive: boolean;
+  } | null;
+  reminder: {
+    status: TaskReminderStatus;
+    scheduledAt: Date;
+    sentAt: Date | null;
+  } | null;
   isOverdue: boolean;
 };
 

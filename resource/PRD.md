@@ -669,7 +669,20 @@ System provides information/recommendations
 Admin makes final assignment decision
 ```
 
-Automatic task assignment is not part of the MVP.
+Blind performance-based automatic assignment is not part of the MVP. Approved recurring series may automatically materialize a Task occurrence for the series' explicitly configured Responsible User.
+
+## 20.1 Task V2 Ownership and Recurrence
+
+```text
+Owner = immutable Task creator
+Responsible User = current executor
+Visibility = global Task metadata/history for active authenticated users
+Completion = REVIEW_REQUIRED or DIRECT
+Recurrence = optional WEEKLY or MONTHLY DIRECT series
+Reminder = one persisted reminder per recurring occurrence
+```
+
+Admin creation remains limited to the Admin's current Team; Super Admin may create for any Team. Responsibility may cross Teams. Global Task visibility does not grant mutation, artifact, submission, review, Dashboard, report, Activity, or Inventory access. Recurrence uses stable business-local anchors and creates independent historical Task occurrences. Overdue remains derived and never becomes a persisted Task status.
 
 ---
 
@@ -2591,3 +2604,11 @@ Approved business identifiers—including employee ID, task reference code, SKU,
 Operix accepts privacy safe public access requests containing applicant name and email. An applicant remains separate from the authenticated User model until a Super Admin assigns the `ADMIN` or `MEMBER` role and approves the request. Approved accounts start inactive and become active only after the applicant configures a password through Better Auth's native reset flow.
 
 Registration requests support `PENDING`, operational `APPROVING`, `APPROVED`, and `REJECTED` states. Public signup remains disabled. Receipt, setup, and generic rejection email delivery is best effort. Registration review data is retained for 90 days after rejection or completed setup, while approved setup pending requests are retained.
+
+# Persistent Personal Todos
+
+Operix provides a private PostgreSQL-backed checklist for active `SUPER_ADMIN` and `ADMIN` users. Each Todo belongs to exactly one User and is never shared. Members cannot access this feature. Todo data remains separate from organizational Tasks and creates no Activity, Notification, email, recurrence, or audit records.
+
+Todo deadlines are calendar dates in the configured Operix business timezone. Completion and reopening are idempotent, completed items remain editable, and overdue state is derived only for active items whose due date is before the current business date. Client-facing Todo identity is an immutable public UUID; private owner and database identities never leave the backend.
+
+Selected Todo mutations use a PostgreSQL fixed-window rate limit keyed by an HMAC of the authenticated internal User identity. The existing global Nest throttler remains the local burst guard, while authorization, owner scoping, idempotency, and database constraints remain the correctness controls.

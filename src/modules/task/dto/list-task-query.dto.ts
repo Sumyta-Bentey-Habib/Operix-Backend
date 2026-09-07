@@ -9,6 +9,7 @@ import {
 } from 'class-validator';
 import {
   TaskPriority,
+  TaskRecurrenceFrequency,
   TaskStatus,
 } from '../../../../generated/prisma/enums.js';
 import { PaginationQueryDto } from '../../../shared/pagination/pagination.dto.js';
@@ -31,7 +32,21 @@ export class ListTaskQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
-  assignedMemberId?: string;
+  responsibleUserId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  ownerId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  recurrenceId?: string;
+
+  @IsOptional()
+  @IsEnum(TaskRecurrenceFrequency)
+  recurrenceFrequency?: TaskRecurrenceFrequency;
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => {

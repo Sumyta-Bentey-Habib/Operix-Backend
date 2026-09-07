@@ -296,7 +296,7 @@ describe('DashboardService', () => {
       where: {
         assignments: {
           some: {
-            memberId: 'member-a',
+            responsibleUserId: 'member-a',
             unassignedAt: null,
           },
         },
@@ -323,15 +323,15 @@ describe('DashboardService', () => {
       taskAssignment: {
         findMany: jestApi.fn().mockResolvedValue([
           {
-            memberId: 'member-low',
+            responsibleUserId: 'member-low',
             task: task({ id: 'low-1', status: TaskStatus.IN_PROGRESS }),
           },
           {
-            memberId: 'member-high',
+            responsibleUserId: 'member-high',
             task: task({ id: 'high-1', status: TaskStatus.IN_PROGRESS }),
           },
           {
-            memberId: 'member-high',
+            responsibleUserId: 'member-high',
             task: task({
               id: 'high-2',
               status: TaskStatus.SUBMITTED,
@@ -339,11 +339,11 @@ describe('DashboardService', () => {
             }),
           },
           {
-            memberId: 'member-mid',
+            responsibleUserId: 'member-mid',
             task: task({ id: 'mid-1', status: TaskStatus.IN_PROGRESS }),
           },
           {
-            memberId: 'member-mid',
+            responsibleUserId: 'member-mid',
             task: task({ id: 'mid-2', status: TaskStatus.IN_PROGRESS }),
           },
         ]),
@@ -374,13 +374,13 @@ describe('DashboardService', () => {
     });
     expect(prisma.taskAssignment.findMany).toHaveBeenCalledWith({
       where: {
-        memberId: {
+        responsibleUserId: {
           in: ['member-low', 'member-high', 'member-mid'],
         },
         unassignedAt: null,
       },
       select: {
-        memberId: true,
+        responsibleUserId: true,
         task: {
           select: performanceTaskSelect,
         },
@@ -517,7 +517,7 @@ describe('DashboardService', () => {
           {
             assignments: {
               some: {
-                memberId: 'member-a',
+                responsibleUserId: 'member-a',
                 unassignedAt: null,
               },
             },

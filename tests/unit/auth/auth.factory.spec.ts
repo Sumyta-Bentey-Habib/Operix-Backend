@@ -117,20 +117,20 @@ describe('createOperixAuth', () => {
       throw new Error('sendResetPassword was not configured');
     }
 
-    await expect(
-      sendResetPassword({
-        user: {
-          id: 'user-a',
-          name: 'User A',
-          email: 'user-a@example.com',
-          emailVerified: true,
-          createdAt: new Date('2026-01-01T00:00:00.000Z'),
-          updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-        },
-        url: 'https://api.operix.test/reset-password/token',
-        token: 'secret-token',
-      }),
-    ).resolves.toBeUndefined();
+    const returned = sendResetPassword({
+      user: {
+        id: 'user-a',
+        name: 'User A',
+        email: 'user-a@example.com',
+        emailVerified: true,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      url: 'https://api.operix.test/reset-password/token',
+      token: 'secret-token',
+    });
+    await expect(returned).resolves.toBeUndefined();
+    await Promise.resolve();
 
     expect(mailService.sendPasswordResetEmail).toHaveBeenCalledWith({
       userId: 'user-a',

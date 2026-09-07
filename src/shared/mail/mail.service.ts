@@ -20,6 +20,7 @@ import type {
   RegistrationMailInput,
   AccountSetupEmailInput,
   TaskAssignedEmailInput,
+  TaskReminderEmailInput,
   WelcomeUserEmailInput,
 } from './mail.interface.js';
 
@@ -129,13 +130,13 @@ export class MailService {
 
     await this.sendTemplatedEmail(
       {
-        name: input.memberName,
-        address: input.memberEmail,
+        name: input.responsibleName,
+        address: input.responsibleEmail,
       },
       `New Operix task assigned: ${input.referenceCode}`,
       MAIL_TEMPLATE.NOTIFICATION_ALERT,
       {
-        recipientName: input.memberName,
+        recipientName: input.responsibleName,
         heading: 'New task assigned',
         message: 'A new task has been assigned to you in Operix.',
         details,
@@ -145,6 +146,43 @@ export class MailService {
     );
 
     this.logger.log('Task assignment email sent.', {
+      templateName: MAIL_TEMPLATE.NOTIFICATION_ALERT,
+      eventId: input.taskId,
+    });
+  }
+
+  async sendTaskReminderEmail(input: TaskReminderEmailInput): Promise<void> {
+    if (!this.transporter) return;
+
+    const taskUrl = new URL(
+      `/tasks/${encodeURIComponent(input.taskId)}`,
+      this.frontendAppUrl,
+    ).toString();
+    await this.sendTemplatedEmail(
+      {
+        name: input.responsibleName,
+        address: input.responsibleEmail,
+      },
+      `Operix task reminder: ${input.referenceCode}`,
+      MAIL_TEMPLATE.NOTIFICATION_ALERT,
+      {
+        recipientName: input.responsibleName,
+        heading: 'Task deadline reminder',
+        message: "A task you're responsible for is approaching its deadline.",
+        details: [
+          { label: 'Reference', value: input.referenceCode },
+          { label: 'Task', value: input.title },
+          {
+            label: 'Due',
+            value: input.dueAt?.toISOString() ?? 'No deadline set',
+          },
+        ],
+        actionLabel: 'Open this task in Operix',
+        actionUrl: taskUrl,
+      },
+    );
+
+    this.logger.log('Task reminder email sent.', {
       templateName: MAIL_TEMPLATE.NOTIFICATION_ALERT,
       eventId: input.taskId,
     });
@@ -178,7 +216,6 @@ export class MailService {
   }
 
   async sendPasswordResetEmail(input: PasswordResetEmailInput): Promise<void> {
-    if (!this.transporter) return;
     await this.sendTemplatedEmail(
       {
         name: input.recipientName,

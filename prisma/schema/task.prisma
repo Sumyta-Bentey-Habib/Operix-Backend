@@ -8,6 +8,7 @@ model TaskCategory {
   updatedAt   DateTime @updatedAt
 
   tasks Task[]
+  recurrences TaskRecurrence[]
 
   @@map("task_category")
 }
@@ -25,6 +26,11 @@ model Task {
   startedAt     DateTime?
   completedAt   DateTime?
   cancelledAt   DateTime?
+  completionMode TaskCompletionMode @default(REVIEW_REQUIRED)
+  completionNote String?
+  scheduledStartAt DateTime?
+  recurrenceId String?
+  occurrenceKey String?
 
   teamId      String
   categoryId  String?
@@ -41,6 +47,8 @@ model Task {
   statusHistory TaskStatusHistory[]
   submissions   TaskSubmission[]
   attachments   TaskAttachment[]
+  recurrence    TaskRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: Restrict)
+  reminder      TaskReminder?
 
   @@index([teamId])
   @@index([status])
@@ -48,26 +56,80 @@ model Task {
   @@index([dueAt])
   @@index([createdById])
   @@index([categoryId])
+  @@unique([recurrenceId, occurrenceKey])
   @@map("task")
 }
 
 model TaskAssignment {
   id           String    @id @default(cuid())
   taskId       String
-  memberId     String
+  responsibleUserId String
   assignedById String
   assignedAt   DateTime  @default(now())
   unassignedAt DateTime?
   note         String?
 
   task       Task @relation("TaskAssignments", fields: [taskId], references: [id], onDelete: Cascade)
-  member     User @relation("MemberAssignments", fields: [memberId], references: [id], onDelete: Restrict)
+  responsibleUser User @relation("ResponsibleAssignments", fields: [responsibleUserId], references: [id], onDelete: Restrict)
   assignedBy User @relation("AssignmentsCreated", fields: [assignedById], references: [id], onDelete: Restrict)
 
   @@index([taskId, assignedAt])
-  @@index([memberId])
+  @@index([responsibleUserId])
   @@index([assignedById])
   @@map("task_assignment")
+}
+
+model TaskRecurrence {
+  id                       String                       @id @default(cuid())
+  publicId                 String                       @unique @default(dbgenerated("gen_random_uuid()")) @map("public_id") @db.Uuid
+  frequency                TaskRecurrenceFrequency
+  createdById              String
+  defaultResponsibleUserId String
+  teamId                   String
+  categoryId               String?
+  title                    String
+  description              String?
+  remarks                  String?
+  priority                 TaskPriority                 @default(MEDIUM)
+  anchorDueAt              DateTime
+  anchorLocalDay           Int?
+  anchorLocalWeekday       Int?
+  anchorLocalTime          String
+  nextOccurrenceAt         DateTime
+  reminderLeadMinutes      Int                          @default(1440)
+  isActive                 Boolean                      @default(true)
+  lastBlockedOccurrenceKey String?
+  lastBlockedReason        TaskRecurrenceBlockedReason?
+  lastBlockedNotifiedAt    DateTime?
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
+
+  createdBy              User          @relation("TaskRecurrenceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  defaultResponsibleUser User          @relation("TaskRecurrenceResponsible", fields: [defaultResponsibleUserId], references: [id], onDelete: Restrict)
+  team                   Team          @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  category               TaskCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tasks                  Task[]
+
+  @@index([isActive, nextOccurrenceAt])
+  @@index([createdById])
+  @@index([defaultResponsibleUserId])
+  @@index([teamId])
+  @@map("task_recurrence")
+}
+
+model TaskReminder {
+  id          String             @id @default(cuid())
+  taskId      String             @unique
+  scheduledAt DateTime
+  status      TaskReminderStatus @default(PENDING)
+  sentAt      DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])
+  @@map("task_reminder")
 }
 
 model TaskStatusHistory {

@@ -1,13 +1,23 @@
 export interface TaskAssignedEmailInput {
-  memberId: string;
-  memberName: string;
-  memberEmail: string;
+  responsibleUserId: string;
+  responsibleName: string;
+  responsibleEmail: string;
   taskId: string;
   referenceCode: string;
   title: string;
   priority: string;
   dueAt: Date | null;
   assignmentNote: string | null;
+}
+
+export interface TaskReminderEmailInput {
+  responsibleUserId: string;
+  responsibleName: string;
+  responsibleEmail: string;
+  taskId: string;
+  referenceCode: string;
+  title: string;
+  dueAt: Date | null;
 }
 
 export interface WelcomeUserEmailInput {

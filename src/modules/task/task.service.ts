@@ -1,13 +1,15 @@
-import { randomBytes } from 'node:crypto';
-
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '../../../generated/prisma/client.js';
 import {
+  TaskCompletionMode,
   TaskPriority,
+  TaskReminderStatus,
   TaskStatus,
   UserRole,
   UserStatus,
 } from '../../../generated/prisma/enums.js';
+import type { ApplicationConfiguration } from '../../config/configuration.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import { writeActivity } from '../../shared/activity/activity-write.js';
 import type { OperixViewer } from '../../shared/auth/viewer.interface.js';
@@ -15,64 +17,128 @@ import { runSerializableTransaction } from '../../shared/database/serializable-t
 import type { PrismaTransactionClient } from '../../shared/database/transaction-client.type.js';
 import { APP_ERROR_CODE } from '../../shared/errors/app-error-code.constant.js';
 import { AppException } from '../../shared/errors/app.exception.js';
-import { createNotification } from '../../shared/notification/notification-write.js';
 import { MailService } from '../../shared/mail/mail.service.js';
 import type { TaskAssignedEmailInput } from '../../shared/mail/mail.interface.js';
+import { createNotification } from '../../shared/notification/notification-write.js';
 import {
   createPaginationMeta,
   normalizePagination,
 } from '../../shared/pagination/pagination.helper.js';
 import type { PaginationInput } from '../../shared/pagination/pagination.interface.js';
+import {
+  createRecurrenceAnchor,
+  getNextOccurrence,
+  getOccurrenceKey,
+} from '../../shared/time/business-time.js';
 import type { AssignTaskDto } from './dto/assign-task.dto.js';
+import type { CompleteTaskDto } from './dto/complete-task.dto.js';
 import type { CreateTaskDto } from './dto/create-task.dto.js';
 import type { ListTaskQueryDto } from './dto/list-task-query.dto.js';
-import { buildTaskScopeWhere } from './policies/task-scope.policy.js';
 import {
   TASK_ACTIVITY,
   TASK_ERROR_CODE,
   TASK_NOTIFICATION,
 } from './task.constant.js';
 import type {
-  PaginatedTaskStatusHistoryResponse,
   PaginatedTaskResponse,
+  PaginatedTaskStatusHistoryResponse,
   SafeTaskResponse,
 } from './task.interface.js';
 import { mapTaskResponse } from './task.mapper.js';
 import { buildTaskListWhere, getTaskOrderBy } from './task-query.js';
+import { generateTaskReferenceCode } from './task-reference.js';
+import { TaskRecurrenceService } from './task-recurrence.service.js';
 import { taskSelect } from './task.select.js';
 
 @Injectable()
 export class TaskService {
   private readonly logger = new Logger(TaskService.name);
+  private readonly businessTimezone: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
-  ) {}
+    private readonly recurrenceService?: TaskRecurrenceService,
+    configService?: ConfigService<ApplicationConfiguration, true>,
+  ) {
+    this.businessTimezone =
+      configService?.get('app.businessTimezone', { infer: true }) ??
+      'Asia/Dhaka';
+  }
 
   async createTask(
     viewer: OperixViewer,
     dto: CreateTaskDto,
   ): Promise<SafeTaskResponse> {
-    this.assertRole(viewer, UserRole.ADMIN);
+    this.assertCreationRole(viewer);
+    const now = new Date();
+    const completionMode = this.resolveCompletionMode(dto);
+    this.validateRecurrenceInput(dto, completionMode, now);
 
-    return runSerializableTransaction(this.prisma, async (tx) => {
-      const teamId = await this.resolveAdminTeamId(
-        tx,
-        viewer.userId,
-        dto.teamId,
-      );
+    const result = await runSerializableTransaction(this.prisma, async (tx) => {
+      const teamId = await this.resolveCreationTeamId(tx, viewer, dto.teamId);
       const categoryId = await this.resolveCategoryId(tx, dto.categoryId);
+      const responsible = dto.responsibleUserId
+        ? await this.resolveResponsibleUser(
+            tx,
+            dto.responsibleUserId,
+            completionMode,
+          )
+        : null;
 
+      let recurrenceId: string | null = null;
+      let occurrenceKey: string | null = null;
+      if (dto.recurrence && dto.dueAt && responsible) {
+        const anchor = createRecurrenceAnchor(
+          dto.dueAt,
+          this.businessTimezone,
+          dto.recurrence.frequency,
+        );
+        const nextOccurrenceAt = getNextOccurrence(
+          dto.dueAt,
+          this.businessTimezone,
+          dto.recurrence.frequency,
+          anchor,
+        );
+        const recurrence = await tx.taskRecurrence.create({
+          data: {
+            frequency: dto.recurrence.frequency,
+            createdById: viewer.userId,
+            defaultResponsibleUserId: responsible.id,
+            teamId,
+            categoryId,
+            title: dto.title,
+            description: dto.description ?? null,
+            remarks: dto.remarks ?? null,
+            priority: dto.priority ?? TaskPriority.MEDIUM,
+            anchorDueAt: dto.dueAt,
+            anchorLocalDay: anchor.anchorLocalDay,
+            anchorLocalWeekday: anchor.anchorLocalWeekday,
+            anchorLocalTime: anchor.anchorLocalTime,
+            nextOccurrenceAt,
+            reminderLeadMinutes: dto.recurrence.reminderLeadMinutes ?? 1_440,
+          },
+          select: { id: true },
+        });
+        recurrenceId = recurrence.id;
+        occurrenceKey = getOccurrenceKey(dto.dueAt, this.businessTimezone);
+      }
+
+      const initialStatus = responsible
+        ? TaskStatus.ASSIGNED
+        : TaskStatus.PENDING;
       const task = await tx.task.create({
         data: {
-          referenceCode: generateTaskReferenceCode(),
+          referenceCode: generateTaskReferenceCode(now),
           title: dto.title,
           description: dto.description ?? null,
           remarks: dto.remarks ?? null,
           priority: dto.priority ?? TaskPriority.MEDIUM,
-          status: TaskStatus.PENDING,
+          status: initialStatus,
           dueAt: dto.dueAt ?? null,
+          completionMode,
+          recurrenceId,
+          occurrenceKey,
           teamId,
           categoryId,
           createdById: viewer.userId,
@@ -80,30 +146,77 @@ export class TaskService {
         select: taskSelect,
       });
 
-      await tx.taskStatusHistory.create({
-        data: {
-          taskId: task.id,
-          fromStatus: null,
-          toStatus: TaskStatus.PENDING,
-          changedById: viewer.userId,
-          notes: 'Task created.',
-        },
-      });
+      if (responsible) {
+        await tx.taskAssignment.create({
+          data: {
+            taskId: task.id,
+            responsibleUserId: responsible.id,
+            assignedById: viewer.userId,
+            note: null,
+          },
+        });
+        await writeActivity(tx, {
+          actorId: viewer.userId,
+          action: TASK_ACTIVITY.TASK_RESPONSIBILITY_ASSIGNED,
+          entityType: 'TASK',
+          entityId: task.id,
+        });
+      }
 
+      await this.writeCreationHistory(
+        tx,
+        task.id,
+        viewer.userId,
+        initialStatus,
+      );
       await writeActivity(tx, {
         actorId: viewer.userId,
         action: TASK_ACTIVITY.TASK_CREATED,
         entityType: 'TASK',
         entityId: task.id,
-        metadata: {
-          taskId: task.id,
-          referenceCode: task.referenceCode,
-          teamId: task.teamId,
-        },
+        metadata: { referenceCode: task.referenceCode },
       });
 
-      return mapTaskResponse(task, new Date());
+      if (recurrenceId && dto.dueAt) {
+        await tx.taskReminder.create({
+          data: {
+            taskId: task.id,
+            scheduledAt: new Date(
+              dto.dueAt.getTime() -
+                (dto.recurrence?.reminderLeadMinutes ?? 1_440) * 60_000,
+            ),
+          },
+        });
+        await writeActivity(tx, {
+          actorId: viewer.userId,
+          action: TASK_ACTIVITY.TASK_RECURRENCE_CREATED,
+          entityType: 'TASK_RECURRENCE',
+          entityId: recurrenceId,
+        });
+      }
+
+      const mail = responsible
+        ? await this.createAssignmentSideEffects(
+            tx,
+            task,
+            responsible,
+            viewer.userId,
+            null,
+          )
+        : null;
+
+      const selected = responsible
+        ? await tx.task.findFirst({
+            where: { id: task.id },
+            select: taskSelect,
+          })
+        : task;
+      if (!selected) throw this.taskNotFound();
+      return { task: mapTaskResponse(selected, now), mail };
     });
+
+    await this.sendAssignmentBestEffort(result.mail);
+    return result.task;
   }
 
   async listTasks(
@@ -114,7 +227,6 @@ export class TaskService {
     const now = new Date();
     const where = buildTaskListWhere(viewer, query, now);
     const orderBy = getTaskOrderBy(query.sort);
-
     const [data, total] = await Promise.all([
       this.prisma.task.findMany({
         where,
@@ -125,14 +237,9 @@ export class TaskService {
       }),
       this.prisma.task.count({ where }),
     ]);
-
     return {
       data: data.map((task) => mapTaskResponse(task, now)),
-      meta: createPaginationMeta({
-        page: normalized.page,
-        limit: normalized.limit,
-        total,
-      }),
+      meta: createPaginationMeta({ ...normalized, total }),
     };
   }
 
@@ -142,63 +249,41 @@ export class TaskService {
     now: Date,
     take: number,
   ): Promise<SafeTaskResponse[]> {
-    const where = buildTaskListWhere(viewer, query, now);
-    const orderBy = getTaskOrderBy(query.sort);
     const tasks = await this.prisma.task.findMany({
-      where,
+      where: buildTaskListWhere(viewer, query, now),
       select: taskSelect,
-      orderBy,
+      orderBy: getTaskOrderBy(query.sort),
       take,
     });
-
     return tasks.map((task) => mapTaskResponse(task, now));
   }
 
   async getTask(
-    viewer: OperixViewer,
+    _viewer: OperixViewer,
     taskId: string,
   ): Promise<SafeTaskResponse> {
     const task = await this.prisma.task.findFirst({
-      where: {
-        publicId: taskId,
-        ...buildTaskScopeWhere(viewer),
-      },
+      where: { publicId: taskId },
       select: taskSelect,
     });
-
-    if (!task) {
-      throw this.taskNotFound();
-    }
-
+    if (!task) throw this.taskNotFound();
     return mapTaskResponse(task, new Date());
   }
 
   async getTaskHistory(
-    viewer: OperixViewer,
+    _viewer: OperixViewer,
     taskId: string,
     pagination: PaginationInput,
   ): Promise<PaginatedTaskStatusHistoryResponse> {
     const task = await this.prisma.task.findFirst({
-      where: {
-        publicId: taskId,
-        AND: [buildTaskScopeWhere(viewer)],
-      },
-      select: {
-        id: true,
-        publicId: true,
-      },
+      where: { publicId: taskId },
+      select: { id: true, publicId: true },
     });
-
-    if (!task) {
-      throw this.taskNotFound();
-    }
-
+    if (!task) throw this.taskNotFound();
     const normalized = normalizePagination(pagination);
-    const where = { taskId: task.id };
-
     const [data, total] = await Promise.all([
       this.prisma.taskStatusHistory.findMany({
-        where,
+        where: { taskId: task.id },
         select: {
           fromStatus: true,
           toStatus: true,
@@ -210,11 +295,8 @@ export class TaskService {
         skip: normalized.skip,
         take: normalized.take,
       }),
-      this.prisma.taskStatusHistory.count({
-        where,
-      }),
+      this.prisma.taskStatusHistory.count({ where: { taskId: task.id } }),
     ]);
-
     return {
       data: data.map((entry) => ({
         taskId: task.publicId,
@@ -224,11 +306,7 @@ export class TaskService {
         notes: entry.notes,
         changedAt: entry.changedAt,
       })),
-      meta: createPaginationMeta({
-        page: normalized.page,
-        limit: normalized.limit,
-        total,
-      }),
+      meta: createPaginationMeta({ ...normalized, total }),
     };
   }
 
@@ -237,87 +315,64 @@ export class TaskService {
     taskId: string,
     dto: AssignTaskDto,
   ): Promise<SafeTaskResponse> {
-    this.assertRole(viewer, UserRole.ADMIN);
-
-    let assignmentResult: {
-      task: SafeTaskResponse;
-      mail: TaskAssignedEmailInput;
-    };
-
+    let result: { task: SafeTaskResponse; mail: TaskAssignedEmailInput };
     try {
-      assignmentResult = await runSerializableTransaction(
-        this.prisma,
-        async (tx) => {
-          const task = await this.findAdminScopedTask(
-            tx,
-            viewer.userId,
-            taskId,
+      result = await runSerializableTransaction(this.prisma, async (tx) => {
+        const task = await tx.task.findFirst({
+          where: { publicId: taskId },
+          select: {
+            id: true,
+            publicId: true,
+            referenceCode: true,
+            title: true,
+            priority: true,
+            dueAt: true,
+            status: true,
+            createdById: true,
+            completionMode: true,
+          },
+        });
+        if (!task) throw this.taskNotFound();
+        if (
+          viewer.role !== UserRole.SUPER_ADMIN &&
+          task.createdById !== viewer.userId
+        ) {
+          throw this.forbidden();
+        }
+        if (
+          task.status !== TaskStatus.PENDING &&
+          task.status !== TaskStatus.ASSIGNED
+        ) {
+          throw this.transitionConflict('Task responsibility is locked.');
+        }
+        const responsible = await this.resolveResponsibleUser(
+          tx,
+          dto.responsibleUserId,
+          task.completionMode,
+        );
+        const current = await this.findCurrentAssignment(tx, task.id);
+        if (current?.responsibleUserId === responsible.id) {
+          throw new AppException(
+            HttpStatus.CONFLICT,
+            TASK_ERROR_CODE.TASK_ALREADY_ASSIGNED,
+            'This user is already responsible for the task.',
           );
-
-          if (task.status !== TaskStatus.PENDING) {
-            throw new AppException(
-              HttpStatus.CONFLICT,
-              TASK_ERROR_CODE.INVALID_TASK_TRANSITION,
-              'Task is not assignable in its current status.',
-            );
-          }
-
-          const currentAssignment = await this.findCurrentAssignment(
-            tx,
-            task.id,
-          );
-
-          if (currentAssignment) {
-            throw new AppException(
-              HttpStatus.CONFLICT,
-              TASK_ERROR_CODE.TASK_ALREADY_ASSIGNED,
-              'Task already has an active assignment.',
-            );
-          }
-
-          const member = await tx.user.findFirst({
-            where: {
-              publicId: dto.memberId,
-              role: UserRole.MEMBER,
-              status: UserStatus.ACTIVE,
-              teamMembership: {
-                teamId: task.teamId,
-              },
-            },
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
+        }
+        if (current) {
+          await tx.taskAssignment.update({
+            where: { id: current.id },
+            data: { unassignedAt: new Date() },
           });
-
-          if (!member) {
-            throw new AppException(
-              HttpStatus.CONFLICT,
-              TASK_ERROR_CODE.MEMBER_NOT_ELIGIBLE_FOR_TASK,
-              'Member is not eligible for this task.',
-            );
-          }
-
-          await tx.taskAssignment.create({
-            data: {
-              taskId: task.id,
-              memberId: member.id,
-              assignedById: viewer.userId,
-              note: dto.note ?? null,
-            },
-          });
-
-          const updated = await tx.task.update({
-            where: {
-              id: task.id,
-            },
-            data: {
-              status: TaskStatus.ASSIGNED,
-            },
-            select: taskSelect,
-          });
-
+        }
+        await tx.taskAssignment.create({
+          data: {
+            taskId: task.id,
+            responsibleUserId: responsible.id,
+            assignedById: viewer.userId,
+            note: normalizeOptionalText(dto.note),
+          },
+        });
+        if (task.status === TaskStatus.PENDING) {
           await tx.taskStatusHistory.create({
             data: {
               taskId: task.id,
@@ -327,106 +382,60 @@ export class TaskService {
               notes: 'Task assigned.',
             },
           });
-
-          await writeActivity(tx, {
-            actorId: viewer.userId,
-            action: TASK_ACTIVITY.TASK_ASSIGNED,
-            entityType: 'TASK',
-            entityId: task.id,
-            metadata: {
-              taskId: task.id,
-              memberId: member.id,
-            },
-          });
-
-          await createNotification(tx, {
-            receiverId: member.id,
-            actorId: viewer.userId,
-            type: TASK_NOTIFICATION.TASK_ASSIGNED,
-            title: 'New task assigned',
-            body: 'A new task has been assigned to you.',
-            targetType: 'TASK',
-            targetId: task.id,
-          });
-
-          return {
-            task: mapTaskResponse(updated, new Date()),
-            mail: {
-              memberId: member.id,
-              memberName: member.name,
-              memberEmail: member.email,
-              taskId: updated.publicId,
-              referenceCode: updated.referenceCode,
-              title: updated.title,
-              priority: updated.priority,
-              dueAt: updated.dueAt,
-              assignmentNote: dto.note ?? null,
-            },
-          };
-        },
-      );
+        }
+        await writeActivity(tx, {
+          actorId: viewer.userId,
+          action: current
+            ? TASK_ACTIVITY.TASK_RESPONSIBILITY_CHANGED
+            : TASK_ACTIVITY.TASK_RESPONSIBILITY_ASSIGNED,
+          entityType: 'TASK',
+          entityId: task.id,
+        });
+        const mail = await this.createAssignmentSideEffects(
+          tx,
+          task,
+          responsible,
+          viewer.userId,
+          normalizeOptionalText(dto.note),
+        );
+        const updated = await tx.task.update({
+          where: { id: task.id },
+          data: { status: TaskStatus.ASSIGNED },
+          select: taskSelect,
+        });
+        return { task: mapTaskResponse(updated, new Date()), mail };
+      });
     } catch (error) {
       throw mapAssignmentConflict(error);
     }
-
-    try {
-      await this.mailService.sendTaskAssignedEmail(assignmentResult.mail);
-    } catch (error) {
-      this.logger.warn('Task assignment email failed.', {
-        taskId,
-        errorName: getErrorName(error),
-      });
-    }
-
-    return assignmentResult.task;
+    await this.sendAssignmentBestEffort(result.mail);
+    return result.task;
   }
 
   async startTask(
     viewer: OperixViewer,
     taskId: string,
   ): Promise<SafeTaskResponse> {
-    this.assertRole(viewer, UserRole.MEMBER);
-
     return runSerializableTransaction(this.prisma, async (tx) => {
       const task = await tx.task.findFirst({
-        where: {
-          publicId: taskId,
-          assignments: {
-            some: {
-              memberId: viewer.userId,
-              unassignedAt: null,
-            },
-          },
-        },
-        select: {
-          id: true,
-          status: true,
-        },
+        where: { publicId: taskId },
+        select: { id: true, status: true },
       });
-
-      if (!task) {
-        throw this.taskNotFound();
+      if (!task) throw this.taskNotFound();
+      const assignment = await this.findCurrentAssignment(tx, task.id);
+      if (assignment?.responsibleUserId !== viewer.userId) {
+        throw this.notResponsible();
       }
-
       if (task.status !== TaskStatus.ASSIGNED) {
-        throw new AppException(
-          HttpStatus.CONFLICT,
-          TASK_ERROR_CODE.INVALID_TASK_TRANSITION,
+        throw this.transitionConflict(
           'Task is not startable in its current status.',
         );
       }
-
       const updated = await tx.task.update({
-        where: {
-          id: task.id,
-        },
-        data: {
-          status: TaskStatus.IN_PROGRESS,
-          startedAt: new Date(),
-        },
+        where: { id: task.id },
+        data: { status: TaskStatus.IN_PROGRESS, startedAt: new Date() },
         select: taskSelect,
       });
-
       await tx.taskStatusHistory.create({
         data: {
           taskId: task.id,
@@ -436,65 +445,151 @@ export class TaskService {
           notes: 'Task started.',
         },
       });
-
       await writeActivity(tx, {
         actorId: viewer.userId,
         action: TASK_ACTIVITY.TASK_STARTED,
         entityType: 'TASK',
         entityId: task.id,
-        metadata: {
-          taskId,
-        },
       });
-
       return mapTaskResponse(updated, new Date());
     });
   }
 
-  private async findAdminScopedTask(
-    tx: PrismaTransactionClient,
-    adminId: string,
+  async completeTask(
+    viewer: OperixViewer,
     taskId: string,
-  ) {
-    const task = await tx.task.findFirst({
-      where: {
-        publicId: taskId,
-        team: {
-          adminId,
+    dto: CompleteTaskDto,
+  ): Promise<SafeTaskResponse> {
+    const result = await runSerializableTransaction(this.prisma, async (tx) => {
+      const task = await tx.task.findFirst({
+        where: { publicId: taskId },
+        select: {
+          id: true,
+          status: true,
+          completionMode: true,
+          recurrenceId: true,
         },
-      },
-      select: {
-        id: true,
-        status: true,
-        teamId: true,
-      },
+      });
+      if (!task) throw this.taskNotFound();
+      const assignment = await this.findCurrentAssignment(tx, task.id);
+      if (assignment?.responsibleUserId !== viewer.userId) {
+        throw this.notResponsible();
+      }
+      if (task.status === TaskStatus.COMPLETED) {
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          TASK_ERROR_CODE.TASK_ALREADY_COMPLETED,
+          'Task is already completed.',
+        );
+      }
+      if (task.completionMode !== TaskCompletionMode.DIRECT) {
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          TASK_ERROR_CODE.TASK_DIRECT_COMPLETION_NOT_ALLOWED,
+          'This task requires the submission and review workflow.',
+        );
+      }
+      if (task.status !== TaskStatus.IN_PROGRESS) {
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          TASK_ERROR_CODE.TASK_INVALID_STATUS_TRANSITION,
+          'Task is not completable in its current status.',
+        );
+      }
+      const completedAt = new Date();
+      const updated = await tx.task.update({
+        where: { id: task.id },
+        data: {
+          status: TaskStatus.COMPLETED,
+          completedAt,
+          completionNote: normalizeOptionalText(dto.completionNote),
+        },
+        select: taskSelect,
+      });
+      await tx.taskReminder.updateMany({
+        where: { taskId: task.id, status: TaskReminderStatus.PENDING },
+        data: { status: TaskReminderStatus.CANCELLED },
+      });
+      await tx.taskStatusHistory.create({
+        data: {
+          taskId: task.id,
+          fromStatus: TaskStatus.IN_PROGRESS,
+          toStatus: TaskStatus.COMPLETED,
+          changedById: viewer.userId,
+          notes: 'Task completed directly.',
+        },
+      });
+      await writeActivity(tx, {
+        actorId: viewer.userId,
+        action: TASK_ACTIVITY.TASK_COMPLETED_DIRECT,
+        entityType: 'TASK',
+        entityId: task.id,
+      });
+      return {
+        task: mapTaskResponse(updated, completedAt),
+        recurrenceId: task.recurrenceId,
+      };
     });
-
-    if (!task) {
-      throw this.taskNotFound();
+    if (result.recurrenceId) {
+      await this.recurrenceService
+        ?.reconcileRecurrence(result.recurrenceId, new Date())
+        .catch((error: unknown) => {
+          this.logger.warn('Task recurrence reconciliation failed.', {
+            eventId: taskId,
+            errorName: getErrorName(error),
+          });
+        });
     }
-
-    return task;
+    return result.task;
   }
 
-  private async resolveAdminTeamId(
+  private resolveCompletionMode(dto: CreateTaskDto): TaskCompletionMode {
+    if (dto.recurrence) {
+      if (dto.completionMode === TaskCompletionMode.REVIEW_REQUIRED) {
+        throw new AppException(
+          HttpStatus.BAD_REQUEST,
+          TASK_ERROR_CODE.INVALID_TASK_RECURRENCE,
+          'Recurring tasks must use direct completion.',
+        );
+      }
+      return TaskCompletionMode.DIRECT;
+    }
+    return dto.completionMode ?? TaskCompletionMode.REVIEW_REQUIRED;
+  }
+
+  private validateRecurrenceInput(
+    dto: CreateTaskDto,
+    completionMode: TaskCompletionMode,
+    now: Date,
+  ): void {
+    if (!dto.recurrence) return;
+    if (
+      !dto.dueAt ||
+      dto.dueAt <= now ||
+      !dto.responsibleUserId ||
+      completionMode !== TaskCompletionMode.DIRECT
+    ) {
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        TASK_ERROR_CODE.INVALID_TASK_RECURRENCE,
+        'Recurrence requires a future due date, a responsible user, and direct completion.',
+      );
+    }
+  }
+
+  private async resolveCreationTeamId(
     tx: PrismaTransactionClient,
-    adminId: string,
-    teamId: string,
+    viewer: OperixViewer,
+    teamPublicId: string,
   ): Promise<string> {
     const team = await tx.team.findFirst({
       where: {
-        publicId: teamId,
-        adminId,
+        publicId: teamPublicId,
+        ...(viewer.role === UserRole.ADMIN ? { adminId: viewer.userId } : {}),
       },
-      select: {
-        id: true,
-      },
+      select: { id: true },
     });
-
-    if (!team) {
-      throw this.taskNotFound();
-    }
+    if (!team) throw this.taskNotFound();
     return team.id;
   }
 
@@ -502,19 +597,11 @@ export class TaskService {
     tx: PrismaTransactionClient,
     categoryId?: string,
   ): Promise<string | null> {
-    if (!categoryId) {
-      return null;
-    }
-
+    if (!categoryId) return null;
     const category = await tx.taskCategory.findUnique({
-      where: {
-        publicId: categoryId,
-      },
-      select: {
-        id: true,
-      },
+      where: { publicId: categoryId },
+      select: { id: true },
     });
-
     if (!category) {
       throw new AppException(
         HttpStatus.CONFLICT,
@@ -525,30 +612,150 @@ export class TaskService {
     return category.id;
   }
 
+  private async resolveResponsibleUser(
+    tx: PrismaTransactionClient,
+    publicId: string,
+    completionMode: TaskCompletionMode,
+  ) {
+    const user = await tx.user.findFirst({
+      where: {
+        publicId,
+        status: UserStatus.ACTIVE,
+        ...(completionMode === TaskCompletionMode.REVIEW_REQUIRED
+          ? { role: UserRole.MEMBER }
+          : {}),
+      },
+      select: { id: true, name: true, email: true },
+    });
+    if (!user) {
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        TASK_ERROR_CODE.RESPONSIBLE_USER_NOT_ELIGIBLE,
+        'The selected user is not eligible for this task.',
+      );
+    }
+    return user;
+  }
+
+  private async writeCreationHistory(
+    tx: PrismaTransactionClient,
+    taskId: string,
+    actorId: string,
+    finalStatus: TaskStatus,
+  ): Promise<void> {
+    await tx.taskStatusHistory.create({
+      data: {
+        taskId,
+        fromStatus: null,
+        toStatus: TaskStatus.PENDING,
+        changedById: actorId,
+        notes: 'Task created.',
+      },
+    });
+    if (finalStatus === TaskStatus.ASSIGNED) {
+      await tx.taskStatusHistory.create({
+        data: {
+          taskId,
+          fromStatus: TaskStatus.PENDING,
+          toStatus: TaskStatus.ASSIGNED,
+          changedById: actorId,
+          notes: 'Task assigned.',
+        },
+      });
+    }
+  }
+
+  private async createAssignmentSideEffects(
+    tx: PrismaTransactionClient,
+    task: {
+      id: string;
+      publicId: string;
+      referenceCode: string;
+      title: string;
+      priority: TaskPriority;
+      dueAt: Date | null;
+    },
+    responsible: { id: string; name: string; email: string },
+    actorId: string | null,
+    assignmentNote: string | null,
+  ): Promise<TaskAssignedEmailInput> {
+    await createNotification(tx, {
+      receiverId: responsible.id,
+      actorId,
+      type: TASK_NOTIFICATION.TASK_ASSIGNED,
+      title: 'New task assigned',
+      body: 'A new task has been assigned to you.',
+      targetType: 'TASK',
+      targetId: task.id,
+    });
+    return {
+      responsibleUserId: responsible.id,
+      responsibleName: responsible.name,
+      responsibleEmail: responsible.email,
+      taskId: task.publicId,
+      referenceCode: task.referenceCode,
+      title: task.title,
+      priority: task.priority,
+      dueAt: task.dueAt,
+      assignmentNote,
+    };
+  }
+
   private async findCurrentAssignment(
     tx: PrismaTransactionClient,
     taskId: string,
   ) {
     return tx.taskAssignment.findFirst({
-      where: {
-        taskId,
-        unassignedAt: null,
-      },
-      select: {
-        id: true,
-        memberId: true,
-      },
+      where: { taskId, unassignedAt: null },
+      select: { id: true, responsibleUserId: true },
     });
   }
 
-  private assertRole(viewer: OperixViewer, role: UserRole): void {
-    if (viewer.role !== role) {
-      throw new AppException(
-        HttpStatus.FORBIDDEN,
-        APP_ERROR_CODE.FORBIDDEN,
-        'You do not have access to this resource.',
-      );
+  private async sendAssignmentBestEffort(
+    mail: TaskAssignedEmailInput | null,
+  ): Promise<void> {
+    if (!mail) return;
+    try {
+      await this.mailService.sendTaskAssignedEmail(mail);
+    } catch (error) {
+      this.logger.warn('Task assignment email failed.', {
+        eventId: mail.taskId,
+        errorName: getErrorName(error),
+      });
     }
+  }
+
+  private assertCreationRole(viewer: OperixViewer): void {
+    if (
+      viewer.role !== UserRole.SUPER_ADMIN &&
+      viewer.role !== UserRole.ADMIN
+    ) {
+      throw this.forbidden();
+    }
+  }
+
+  private notResponsible(): AppException {
+    return new AppException(
+      HttpStatus.FORBIDDEN,
+      TASK_ERROR_CODE.TASK_NOT_RESPONSIBLE,
+      'Only the current responsible user may perform this action.',
+    );
+  }
+
+  private forbidden(): AppException {
+    return new AppException(
+      HttpStatus.FORBIDDEN,
+      APP_ERROR_CODE.FORBIDDEN,
+      'You do not have access to this action.',
+    );
+  }
+
+  private transitionConflict(message: string): AppException {
+    return new AppException(
+      HttpStatus.CONFLICT,
+      TASK_ERROR_CODE.INVALID_TASK_TRANSITION,
+      message,
+    );
   }
 
   private taskNotFound(): AppException {
@@ -558,13 +765,6 @@ export class TaskService {
       'Task not found.',
     );
   }
-}
-
-function generateTaskReferenceCode(): string {
-  const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-  const suffix = randomBytes(3).toString('hex').toUpperCase();
-
-  return `TASK-${date}-${suffix}`;
 }
 
 function mapAssignmentConflict(error: unknown): Error {
@@ -578,10 +778,14 @@ function mapAssignmentConflict(error: unknown): Error {
       'Task already has an active assignment.',
     );
   }
-
   return error instanceof Error ? error : new Error('Unexpected error.');
 }
 
 function getErrorName(error: unknown): string {
   return error instanceof Error ? error.name : 'UnknownError';
+}
+
+function normalizeOptionalText(value: string | undefined): string | null {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : null;
 }

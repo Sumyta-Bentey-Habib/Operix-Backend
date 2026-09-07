@@ -11,12 +11,48 @@ export const taskSelect = {
   startedAt: true,
   completedAt: true,
   cancelledAt: true,
-  teamId: true,
-  categoryId: true,
-  createdById: true,
-  team: { select: { publicId: true } },
+  completionMode: true,
+  completionNote: true,
+  scheduledStartAt: true,
+  occurrenceKey: true,
+  team: { select: { publicId: true, name: true } },
   category: { select: { publicId: true } },
-  createdBy: { select: { publicId: true } },
+  createdBy: {
+    select: {
+      publicId: true,
+      name: true,
+      role: true,
+      employeeId: true,
+      designation: true,
+    },
+  },
+  assignments: {
+    where: { unassignedAt: null },
+    take: 1,
+    select: {
+      responsibleUser: {
+        select: {
+          publicId: true,
+          name: true,
+          role: true,
+          employeeId: true,
+          designation: true,
+        },
+      },
+    },
+  },
+  recurrence: {
+    select: {
+      publicId: true,
+      frequency: true,
+      nextOccurrenceAt: true,
+      reminderLeadMinutes: true,
+      isActive: true,
+    },
+  },
+  reminder: {
+    select: { status: true, scheduledAt: true, sentAt: true },
+  },
   createdAt: true,
   updatedAt: true,
 } as const;

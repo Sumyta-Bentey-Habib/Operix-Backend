@@ -9,13 +9,11 @@ import {
   Post,
   Query,
   Req,
-  Res,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import type { Request } from 'express';
-import type { Response } from 'express';
 import { UserRole } from '../../../generated/prisma/enums.js';
 import { AccountStatusGuard } from '../../shared/auth/account-status.guard.js';
 import { CurrentViewer } from '../../shared/auth/current-viewer.decorator.js';
@@ -43,24 +41,8 @@ export class RegistrationController {
   async create(
     @Body() dto: CreateRegistrationRequestDto,
     @Req() request: Request,
-    @Res({ passthrough: true }) response: Response,
   ) {
-    try {
-      return await this.service.createPublicRequest(
-        dto,
-        getTrustedClientIp(request),
-      );
-    } catch (error) {
-      if (error instanceof AppException) {
-        const body = error.getResponse();
-        if (typeof body === 'object' && body !== null && 'details' in body) {
-          const details = body.details as { retryAfter?: unknown } | null;
-          if (typeof details?.retryAfter === 'number')
-            response.setHeader('Retry-After', String(details.retryAfter));
-        }
-      }
-      throw error;
-    }
+    return this.service.createPublicRequest(dto, getTrustedClientIp(request));
   }
 
   @Get()

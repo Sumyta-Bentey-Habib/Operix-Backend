@@ -20,7 +20,10 @@ const PUBLIC_IDENTIFIER_FIELDS = new Set([
   'assignmentId',
   'actorId',
   'targetTeamId',
-  'assignedMemberId',
+  'responsibleUserId',
+  'recurrenceId',
+  'ownerId',
+  'todoId',
 ]);
 
 @Injectable()

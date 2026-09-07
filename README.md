@@ -135,7 +135,9 @@ Auth → Viewer Context → Team Scope
   ↓
 Users and Teams
   ↓
-Tasks → Submissions → Reviews → Activity
+Tasks → Responsibility → Direct Completion or Submission/Review → Activity
+  ↓
+Recurring Task Series → Occurrences → Reminders
   ↓
 Performance and Dashboard Analytics
   ↓
@@ -193,22 +195,28 @@ Native Better Auth password reset routes include:
 
 ### Task, Submission, Review, and Attachments
 
-| Method   | Route                                      | Purpose                          |
-| -------- | ------------------------------------------ | -------------------------------- |
-| `POST`   | `/tasks`                                   | Create Task                      |
-| `GET`    | `/tasks`                                   | List scoped Tasks with filters   |
-| `GET`    | `/tasks/:taskId`                           | Get Task detail                  |
-| `GET`    | `/tasks/:taskId/history`                   | Get Task status history          |
-| `POST`   | `/tasks/:taskId/assignments`               | Assign Task to Member            |
-| `POST`   | `/tasks/:taskId/start`                     | Member starts assigned Task      |
-| `POST`   | `/tasks/:taskId/submissions`               | Submit or resubmit Task work     |
-| `GET`    | `/submissions/:submissionId`               | Get Submission detail            |
-| `POST`   | `/submissions/:submissionId/reviews`       | Admin reviews Submission         |
-| `POST`   | `/tasks/:taskId/attachments`               | Upload Task attachments          |
-| `GET`    | `/tasks/:taskId/attachments`               | List Task attachments            |
-| `DELETE` | `/tasks/:taskId/attachments/:attachmentId` | Delete pending Task attachment   |
-| `GET`    | `/submissions/:submissionId/attachments`   | List Submission attachments      |
-| `GET`    | `/files/:fileId/download`                  | Authorized proxied file download |
+| Method   | Route                                         | Purpose                                |
+| -------- | --------------------------------------------- | -------------------------------------- |
+| `POST`   | `/tasks`                                      | Create Task                            |
+| `GET`    | `/tasks`                                      | List globally visible Task metadata    |
+| `GET`    | `/tasks/:taskId`                              | Get Task detail                        |
+| `GET`    | `/tasks/:taskId/history`                      | Get Task status history                |
+| `POST`   | `/tasks/:taskId/assignments`                  | Assign/reassign Responsible User       |
+| `POST`   | `/tasks/:taskId/start`                        | Responsible User starts Task           |
+| `POST`   | `/tasks/:taskId/complete`                     | Responsible User completes DIRECT Task |
+| `GET`    | `/task-recurrences/:recurrenceId`             | Get recurring series                   |
+| `PATCH`  | `/task-recurrences/:recurrenceId`             | Update future series defaults          |
+| `GET`    | `/task-recurrences/:recurrenceId/occurrences` | List series occurrences                |
+| `POST`   | `/tasks/:taskId/submissions`                  | Submit or resubmit Task work           |
+| `GET`    | `/submissions/:submissionId`                  | Get Submission detail                  |
+| `POST`   | `/submissions/:submissionId/reviews`          | Admin reviews Submission               |
+| `POST`   | `/tasks/:taskId/attachments`                  | Upload Task attachments                |
+| `GET`    | `/tasks/:taskId/attachments`                  | List Task attachments                  |
+| `DELETE` | `/tasks/:taskId/attachments/:attachmentId`    | Delete pending Task attachment         |
+| `GET`    | `/submissions/:submissionId/attachments`      | List Submission attachments            |
+| `GET`    | `/files/:fileId/download`                     | Authorized proxied file download       |
+
+Task metadata and lifecycle history are visible to every active authenticated role. Attachment, file, submission, review, Dashboard, report, Activity, and Inventory authorization remains independently scoped. `Task.createdById` is the immutable Owner; `TaskAssignment.responsibleUserId` is the current executor. Recurring Tasks are DIRECT weekly/monthly series with one persisted reminder per occurrence.
 
 ### Activity, Notifications, Performance, Dashboard
 

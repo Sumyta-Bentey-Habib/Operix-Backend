@@ -108,6 +108,16 @@ export async function resolvePublicReference(
           })
         )?.publicId ?? null
       );
+    case 'TASK_RECURRENCE':
+      if (!canResolve('taskRecurrence')) return null;
+      return (
+        (
+          await tx.taskRecurrence.findUnique({
+            where: { id: databaseId },
+            select: { publicId: true },
+          })
+        )?.publicId ?? null
+      );
     default:
       return null;
   }

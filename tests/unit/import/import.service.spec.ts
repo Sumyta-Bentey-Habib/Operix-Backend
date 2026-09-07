@@ -144,7 +144,7 @@ function existingHistoricalTask(overrides = {}) {
     cancelledAt: null,
     assignments: [
       {
-        memberId: 'member-a',
+        responsibleUserId: 'member-a',
         assignedById: 'admin-a',
         assignedAt,
         unassignedAt: null,
@@ -869,7 +869,7 @@ describe('ImportService', () => {
               cancelledAt: new Date('2026-08-19T10:00:00Z'),
               assignments: [
                 {
-                  memberId: 'member-a',
+                  responsibleUserId: 'member-a',
                   assignedById: 'admin-a',
                   assignedAt: new Date('2026-08-17T09:00:00Z'),
                   unassignedAt: null,
@@ -932,7 +932,7 @@ describe('ImportService', () => {
     const assignmentArg = firstMockArg<{
       data: {
         taskId: string;
-        memberId: string;
+        responsibleUserId: string;
         assignedById: string;
         assignedAt: Date;
         unassignedAt: Date | null;
@@ -942,7 +942,7 @@ describe('ImportService', () => {
       expect.arrayContaining([
         expect.objectContaining({
           taskId: 'task-a',
-          memberId: 'member-a',
+          responsibleUserId: 'member-a',
           assignedById: 'admin-a',
           assignedAt: new Date('2026-08-18T09:00:00Z'),
           unassignedAt: null,
@@ -1193,7 +1193,7 @@ describe('ImportService', () => {
             cancelledAt: null,
             assignments: [
               {
-                memberId: 'member-a',
+                responsibleUserId: 'member-a',
                 assignedById: 'admin-a',
                 assignedAt,
                 unassignedAt: null,

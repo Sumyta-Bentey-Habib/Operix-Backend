@@ -1,6 +1,9 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Prisma } from '../../../generated/prisma/client.js';
-import { TaskStatus } from '../../../generated/prisma/enums.js';
+import {
+  TaskCompletionMode,
+  TaskStatus,
+} from '../../../generated/prisma/enums.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import { writeActivity } from '../../shared/activity/activity-write.js';
 import type { OperixViewer } from '../../shared/auth/viewer.interface.js';
@@ -82,7 +85,7 @@ export class SubmissionService {
               publicId: taskId,
               assignments: {
                 some: {
-                  memberId: viewer.userId,
+                  responsibleUserId: viewer.userId,
                   unassignedAt: null,
                 },
               },
@@ -90,6 +93,7 @@ export class SubmissionService {
             select: {
               id: true,
               status: true,
+              completionMode: true,
               team: {
                 select: {
                   adminId: true,
@@ -100,6 +104,14 @@ export class SubmissionService {
 
           if (!task) {
             throw this.taskNotFound();
+          }
+
+          if (task.completionMode === TaskCompletionMode.DIRECT) {
+            throw new AppException(
+              HttpStatus.CONFLICT,
+              TASK_ERROR_CODE.TASK_DIRECT_COMPLETION_REQUIRED,
+              'Direct tasks must be completed through the completion action.',
+            );
           }
 
           if (
@@ -335,7 +347,7 @@ export class SubmissionService {
         publicId: taskId,
         assignments: {
           some: {
-            memberId: viewer.userId,
+            responsibleUserId: viewer.userId,
             unassignedAt: null,
           },
         },
@@ -343,11 +355,20 @@ export class SubmissionService {
       select: {
         id: true,
         status: true,
+        completionMode: true,
       },
     });
 
     if (!task) {
       throw this.taskNotFound();
+    }
+
+    if (task.completionMode === TaskCompletionMode.DIRECT) {
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        TASK_ERROR_CODE.TASK_DIRECT_COMPLETION_REQUIRED,
+        'Direct tasks must be completed through the completion action.',
+      );
     }
 
     if (

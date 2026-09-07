@@ -21,6 +21,7 @@ function createConfig(
       swaggerEnabled: false,
       throttleTtlMs: 60_000,
       throttleLimit: 100,
+      businessTimezone: 'Asia/Dhaka',
     },
     database: {
       url: 'postgresql://postgres:postgres@localhost:5432/operix',
@@ -50,6 +51,9 @@ function createConfig(
     registration: {
       rateLimitSecret: 'registration-rate-limit-secret-32-characters',
       cronSecret: 'registration-cron-secret-32-characters-long',
+    },
+    rateLimit: {
+      apiSecret: 'api-rate-limit-secret-at-least-32-characters',
     },
   };
 
@@ -302,9 +306,9 @@ describe('MailService', () => {
 
     await expect(
       service.sendTaskAssignedEmail({
-        memberId: 'member-a',
-        memberName: 'Member A',
-        memberEmail: 'member@example.com',
+        responsibleUserId: 'member-a',
+        responsibleName: 'Member A',
+        responsibleEmail: 'member@example.com',
         taskId: 'task-a',
         referenceCode: 'TASK-20260821-ABC123',
         title: 'Batch Review',
@@ -381,9 +385,9 @@ describe('MailService', () => {
     serviceInternals.transporter.sendMail = sendMail;
 
     await service.sendTaskAssignedEmail({
-      memberId: 'member-a',
-      memberName: 'Member A',
-      memberEmail: 'member@example.com',
+      responsibleUserId: 'member-a',
+      responsibleName: 'Member A',
+      responsibleEmail: 'member@example.com',
       taskId: 'task-a',
       referenceCode: 'TASK-20260821-ABC123',
       title: 'Batch Review',

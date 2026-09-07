@@ -36,6 +36,44 @@ enum TaskPriority {
   URGENT
 }
 
+enum TodoCategory {
+  OPERATIONS
+  SECURITY
+  FINANCE
+  TEAM
+  COMPLIANCE
+  GENERAL
+}
+
+enum ApiRateLimitScope {
+  TODO_CREATE
+  TODO_DELETE
+  TODO_CLEAR_COMPLETED
+}
+
+enum TaskCompletionMode {
+  REVIEW_REQUIRED
+  DIRECT
+}
+
+enum TaskRecurrenceFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+enum TaskReminderStatus {
+  PENDING
+  SENT
+  CANCELLED
+}
+
+enum TaskRecurrenceBlockedReason {
+  RESPONSIBLE_NOT_FOUND
+  RESPONSIBLE_NOT_ACTIVE
+  TEAM_NOT_AVAILABLE
+  INVALID_SERIES_CONFIGURATION
+}
+
 enum TaskReviewAction {
   APPROVE
   REQUEST_REVISION

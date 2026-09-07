@@ -9,6 +9,7 @@ model Team {
   admin   User         @relation("AdminTeams", fields: [adminId], references: [id], onDelete: Restrict)
   members TeamMember[]
   tasks   Task[]
+  taskRecurrences TaskRecurrence[]
   managementReports ManagementReport[]
   inventoryItems InventoryItem[] @relation("TeamInventoryItems")
   registrationRequests RegistrationRequest[]

@@ -1,0 +1,37 @@
+model TodoItem {
+  id          String       @id @default(cuid())
+  publicId    String       @unique @default(dbgenerated("gen_random_uuid()")) @map("public_id") @db.Uuid
+  ownerId     String
+  title       String
+  description String?
+  priority    TaskPriority @default(MEDIUM)
+  category    TodoCategory @default(GENERAL)
+  dueOn       DateTime?    @db.Date
+  tags        String[]     @default([])
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, completedAt])
+  @@index([ownerId, dueOn])
+  @@index([ownerId, priority])
+  @@index([ownerId, category])
+  @@map("todo_item")
+}
+
+model ApiRateLimitBucket {
+  id          String            @id @default(cuid())
+  scope       ApiRateLimitScope
+  subjectHash String
+  windowStart DateTime
+  count       Int               @default(1)
+  expiresAt   DateTime
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([scope, subjectHash, windowStart])
+  @@index([expiresAt])
+  @@map("api_rate_limit_bucket")
+}

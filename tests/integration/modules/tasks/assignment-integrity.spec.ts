@@ -89,12 +89,12 @@ describe('TaskAssignment active assignment integrity', () => {
     await expect(
       createAssignment(prismaClient, {
         taskId: testFixture.taskOneId,
-        memberId: testFixture.memberOneId,
+        responsibleUserId: testFixture.memberOneId,
         assignedById: testFixture.adminId,
       }),
     ).resolves.toMatchObject({
       taskId: testFixture.taskOneId,
-      memberId: testFixture.memberOneId,
+      responsibleUserId: testFixture.memberOneId,
       unassignedAt: null,
     });
   });
@@ -105,14 +105,14 @@ describe('TaskAssignment active assignment integrity', () => {
 
     await createAssignment(prismaClient, {
       taskId: testFixture.taskOneId,
-      memberId: testFixture.memberOneId,
+      responsibleUserId: testFixture.memberOneId,
       assignedById: testFixture.adminId,
     });
 
     await expect(
       createAssignment(prismaClient, {
         taskId: testFixture.taskOneId,
-        memberId: testFixture.memberTwoId,
+        responsibleUserId: testFixture.memberTwoId,
         assignedById: testFixture.adminId,
       }),
     ).rejects.toThrow();
@@ -124,7 +124,7 @@ describe('TaskAssignment active assignment integrity', () => {
 
     await createAssignment(prismaClient, {
       taskId: testFixture.taskOneId,
-      memberId: testFixture.memberOneId,
+      responsibleUserId: testFixture.memberOneId,
       assignedById: testFixture.adminId,
       unassignedAt: new Date('2026-08-17T00:00:00.000Z'),
     });
@@ -132,12 +132,12 @@ describe('TaskAssignment active assignment integrity', () => {
     await expect(
       createAssignment(prismaClient, {
         taskId: testFixture.taskOneId,
-        memberId: testFixture.memberTwoId,
+        responsibleUserId: testFixture.memberTwoId,
         assignedById: testFixture.adminId,
       }),
     ).resolves.toMatchObject({
       taskId: testFixture.taskOneId,
-      memberId: testFixture.memberTwoId,
+      responsibleUserId: testFixture.memberTwoId,
       unassignedAt: null,
     });
   });
@@ -148,13 +148,13 @@ describe('TaskAssignment active assignment integrity', () => {
 
     await createAssignment(prismaClient, {
       taskId: testFixture.taskOneId,
-      memberId: testFixture.memberOneId,
+      responsibleUserId: testFixture.memberOneId,
       assignedById: testFixture.adminId,
       unassignedAt: new Date('2026-08-16T00:00:00.000Z'),
     });
     await createAssignment(prismaClient, {
       taskId: testFixture.taskOneId,
-      memberId: testFixture.memberTwoId,
+      responsibleUserId: testFixture.memberTwoId,
       assignedById: testFixture.adminId,
       unassignedAt: new Date('2026-08-17T00:00:00.000Z'),
     });
@@ -162,7 +162,7 @@ describe('TaskAssignment active assignment integrity', () => {
     await expect(
       createAssignment(prismaClient, {
         taskId: testFixture.taskOneId,
-        memberId: testFixture.memberOneId,
+        responsibleUserId: testFixture.memberOneId,
         assignedById: testFixture.adminId,
       }),
     ).resolves.toMatchObject({
@@ -177,19 +177,19 @@ describe('TaskAssignment active assignment integrity', () => {
 
     await createAssignment(prismaClient, {
       taskId: testFixture.taskOneId,
-      memberId: testFixture.memberOneId,
+      responsibleUserId: testFixture.memberOneId,
       assignedById: testFixture.adminId,
     });
 
     await expect(
       createAssignment(prismaClient, {
         taskId: testFixture.taskTwoId,
-        memberId: testFixture.memberTwoId,
+        responsibleUserId: testFixture.memberTwoId,
         assignedById: testFixture.adminId,
       }),
     ).resolves.toMatchObject({
       taskId: testFixture.taskTwoId,
-      memberId: testFixture.memberTwoId,
+      responsibleUserId: testFixture.memberTwoId,
       unassignedAt: null,
     });
   });
@@ -200,7 +200,7 @@ describe('TaskAssignment active assignment integrity', () => {
 
     await createAssignment(prismaClient, {
       taskId: testFixture.taskOneId,
-      memberId: testFixture.memberOneId,
+      responsibleUserId: testFixture.memberOneId,
       assignedById: testFixture.adminId,
     });
 
@@ -313,7 +313,7 @@ function createAssignment(
   prismaClient: PrismaClient,
   input: {
     taskId: string;
-    memberId: string;
+    responsibleUserId: string;
     assignedById: string;
     unassignedAt?: Date;
   },
@@ -321,7 +321,7 @@ function createAssignment(
   return prismaClient.taskAssignment.create({
     data: {
       taskId: input.taskId,
-      memberId: input.memberId,
+      responsibleUserId: input.responsibleUserId,
       assignedById: input.assignedById,
       ...(input.unassignedAt ? { unassignedAt: input.unassignedAt } : {}),
     },

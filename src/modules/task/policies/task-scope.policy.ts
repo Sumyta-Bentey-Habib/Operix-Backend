@@ -20,7 +20,7 @@ export function buildTaskScopeWhere(
   return {
     assignments: {
       some: {
-        memberId: viewer.userId,
+        responsibleUserId: viewer.userId,
         unassignedAt: null,
       },
     },
